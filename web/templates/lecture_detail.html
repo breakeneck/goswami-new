@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ lecture.title }}{% endblock %}
+
+{% block banner %}{% endblock %}
+
+{% block content %}
+<article class="lecture-detail">
+    <div class="lecture-detail-header">
+        <div class="lecture-detail-poster">
+            {% if lecture.cover_url %}
+                <img src="{{ lecture.cover_url }}" alt="{{ lecture.title }}">
+            {% else %}
+                <div class="lecture-image-placeholder"></div>
+            {% endif %}
+        </div>
+        
+        <div class="lecture-detail-info">
+            <h1>{{ lecture.title }}</h1>
+            
+            <div class="lecture-detail-meta">
+                <span class="lecture-date">{{ lecture.occurrence_date|date:"d E Y" }}</span>
+                {% if lecture.location %}
+                    <span class="lecture-location">{{ lecture.location.name }}</span>
+                {% endif %}
+                {% if lecture.duration %}
+                    <span class="lecture-duration">{{ lecture.duration_formatted }}</span>
+                {% endif %}
+            </div>
+            
+            {% if lecture.tags.all %}
+            <div class="lecture-tags">
+                {% for tag in lecture.tags.all %}
+                    <span class="tag">{{ tag.name }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if lecture.teaser %}
+    <div class="lecture-teaser-box">
+        <p>{{ lecture.teaser }}</p>
+    </div>
+    {% endif %}
+    
+    {% if lecture.text %}
+    <div class="lecture-text">
+        {{ lecture.text_html|safe }}
+    </div>
+    {% endif %}
+    
+    {% if lecture.file_url %}
+    <div class="lecture-player">
+        <audio controls preload="none">
+            <source src="{{ lecture.file_url }}" type="audio/mpeg">
+            Ваш браузер не підтримує аудіо елемент.
+        </audio>
+    </div>
+    {% endif %}
+    
+    <div class="lecture-actions">
+        <a href="/" class="btn-back">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Назад к списку
+        </a>
+    </div>
+</article>
+{% endblock %}

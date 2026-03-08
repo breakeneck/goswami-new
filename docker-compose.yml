@@ -1,0 +1,40 @@
+services:
+  goswami-ru-db:
+    build: ./database
+    ports:
+      - "5431:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: goswami.ru
+    volumes:
+      - ./database/data:/var/lib/postgresql/data
+      - ./database/dumps:/var/lib/postgresql/dumps
+      - ./database/tsearch_data:/usr/share/postgresql/16/tsearch_data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: ./web
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-change-in-production}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-True}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DB_NAME=goswami.ru
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=goswami-ru-db
+      - DB_PORT=5432
+    volumes:
+      - ./web:/app
+    depends_on:
+      goswami-ru-db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --run-syncdb &&
+             python manage.py runserver 0.0.0.0:8000"   

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ title }}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="https://goswami.ru/static/assets/favicon.e3b0a41a.ico">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+</head>
+<body>
+    <div class="layout-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div class="container">
+                <div class="header-container">
+                    <!-- Burger button for mobile -->
+                    <div class="burger-btn" id="burgerBtn">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    
+                    <!-- Logo -->
+                    <div class="logo">
+                        <a href="/">
+                            <img src="https://goswami.ru/static/assets/goswami-logo.3a7ed165.svg" alt="Goswami" height="40">
+                        </a>
+                    </div>
+                    
+                    <!-- Navigation -->
+                    <nav class="menu-nav">
+                        <ul class="menu-list">
+                            <li class="menu-item">
+                                <a href="/" class="menu-item-link{% if active_menu == 'lectures' %} active{% endif %}">Лекции</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/books/" class="menu-item-link{% if active_menu == 'books' %} active{% endif %}">Книги</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/articles/" class="menu-item-link{% if active_menu == 'articles' %} active{% endif %}">Статьи</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/about_maharaj/" class="menu-item-link{% if active_menu == 'about' %} active{% endif %}">О Махарадже</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/disciple/" class="menu-item-link{% if active_menu == 'disciple' %} active{% endif %}">Ученикам</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/support/" class="menu-item-link{% if active_menu == 'support' %} active{% endif %}">Поддержать</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/contacts/" class="menu-item-link{% if active_menu == 'contacts' %} active{% endif %}">Контакты</a>
+                            </li>
+                            <li class="menu-item">
+                                <a href="/more/" class="menu-item-link{% if active_menu == 'more' %} active{% endif %}">Еще...</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        {% block banner %}
+        <!-- Banner -->
+        <section class="banner">
+            <div class="container">
+                <h1 class="banner-heading">Лекции Его Святейшества Бхакти Вигьяны Госвами</h1>
+            </div>
+        </section>
+        {% endblock %}
+
+        <!-- Main Content -->
+        <div class="page-wrapper">
+            <div class="page-container">
+                <main class="main-content">
+                    {% block content %}{% endblock %}
+                </main>
+                
+                <!-- Sidebar -->
+                <aside class="sidebar">
+                    <!-- Prabhupada Block -->
+                    <div class="prabhupada-block">
+                        <div class="prabhupada-content">
+                            <div class="prabhupada-text">
+                                <p>Его Божественная Милость<br>
+                                <strong>А.&nbsp;Ч.&nbsp;Бхактиведанта Свами&nbsp;Прабхупада</strong><br>
+                                ачарья-основатель Международного общества сознания Кришны</p>
+                            </div>
+                            <a href="/about_prabhupada/" class="prabhupada-link">Подробнее</a>
+                        </div>
+                    </div>
+                    
+                    <nav class="side-menu-nav">
+                        <ul class="side-menu">
+                            <li class="side-menu-item">
+                                <a href="/" class="side-menu-link{% if active_menu == 'lectures' %} active{% endif %}">Лекции</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/books/" class="side-menu-link{% if active_menu == 'books' %} active{% endif %}">Книги</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/articles/" class="side-menu-link{% if active_menu == 'articles' %} active{% endif %}">Статьи</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/about_maharaj/" class="side-menu-link{% if active_menu == 'about' %} active{% endif %}">О махарадже</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/disciple/" class="side-menu-link{% if active_menu == 'disciple' %} active{% endif %}">Ученикам</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/contacts/" class="side-menu-link{% if active_menu == 'contacts' %} active{% endif %}">Контакты</a>
+                            </li>
+                            <li class="side-menu-item">
+                                <a href="/support/" class="side-menu-link{% if active_menu == 'support' %} active{% endif %}">Поддержка проекта</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </aside>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="container">
+                <p>Этот сайт принадлежит частному лицу, с большим уважением относящемуся к лекциям Бхакти Вигьяны Госвами.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

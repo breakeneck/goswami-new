@@ -1,0 +1,5 @@
+openai-whisper
+psycopg2-binary
+python-dotenv
+torch
+tqdm

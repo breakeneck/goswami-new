@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Search Section -->
+<div class="search-section">
+    <!-- Filter Tags -->
+    <div class="filter-tags">
+        <a href="/" class="filter-tag active">Все</a>
+        <a href="/category/scriptures/" class="filter-tag">По священным писаниям</a>
+        <a href="/years/" class="filter-tag">По годам</a>
+        <a href="/category/retreats/" class="filter-tag">Ретриты и фестивали</a>
+        <a href="/category/seminars/" class="filter-tag">Семинары</a>
+        <a href="/category/holy-places/" class="filter-tag">Святые места</a>
+        <a href="/category/vedic-sciences/" class="filter-tag">Ведические науки</a>
+        <a href="/category/saints/" class="filter-tag">О святых</a>
+        <a href="/category/thematic/" class="filter-tag">Тематические</a>
+        <a href="/category/answers/" class="filter-tag">Ответы на вопросы</a>
+        <a href="/language/en/" class="filter-tag">English</a>
+        <a href="/category/translations/" class="filter-tag">Переводы с английского</a>
+        <a href="/category/disks/" class="filter-tag">Диски</a>
+        <a href="/category/sindhu/" class="filter-tag">СИНДУ</a>
+        <a href="/category/kirtans/" class="filter-tag">Киртаны</a>
+    </div>
+
+    <form action="/search/" method="get" class="search-form" id="searchForm">
+        <div class="search-row">
+            <div class="search-input-wrapper">
+                <input 
+                    type="text" 
+                    name="q" 
+                    class="search-input" 
+                    placeholder="Искать лекцию..." 
+                    value="{{ search_query|default:'' }}"
+                    autocomplete="off"
+                    id="searchInput"
+                >
+                <span class="search-clear" id="searchClear">
+                    <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 7L1 1M7 7L13 13M7 7L13 1M7 7L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </span>
+            </div>
+            <button type="submit" class="search-btn">Найти</button>
+        </div>
+        
+        <!-- Advanced Search -->
+        <div class="advanced-search" id="advancedSearch">
+            <div class="advanced-search-toggle" id="advancedSearchToggle">
+                <span>Расширенный поиск</span>
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            
+            <div class="advanced-search-filters">
+                <div class="filter-group">
+                    <label class="filter-label">Место</label>
+                    <select name="location" class="filter-select">
+                        <option value="">Все места</option>
+                        {% for loc in locations %}
+                        <option value="{{ loc.id }}" {% if selected_location == loc.id|stringformat:"s" %}selected{% endif %}>{{ loc.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label class="filter-label">Категория</label>
+                    <select name="category" class="filter-select">
+                        <option value="">Все категории</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="filter-date-group">
+                    <input type="date" name="date_from" class="filter-input" value="{{ date_from|default:'' }}" placeholder="Дата от">
+                    <input type="date" name="date_to" class="filter-input" value="{{ date_to|default:'' }}" placeholder="Дата до">
+                </div>
+                
+                <div class="filter-actions">
+                    <button type="submit" class="btn">Применить фильтры</button>
+                    <button type="button" class="btn btn-secondary" id="resetFilters">Сбросить</button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {% if show_sort %}
+    <div class="sort-options">
+        <span>Сортировать по дате</span>
+        <a href="?sort=date_desc" class="sort-link{% if sort != 'date_asc' %} active{% endif %}" title="Сначала новые">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 9L3 6h6L6 9z" fill="currentColor"/>
+            </svg>
+        </a>
+        <a href="?sort=date_asc" class="sort-link{% if sort == 'date_asc' %} active{% endif %}" title="Сначала старые">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 3l3 3H3l3-3z" fill="currentColor"/>
+            </svg>
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% if is_search and not lectures %}
+    <div class="no-results">
+        <p>Ничего не найдено по запросу "<strong>{{ search_query }}</strong>"</p>
+    </div>
+{% else %}
+    <!-- Lectures List -->
+    <div class="lectures-list">
+        {% for lecture in lectures %}
+        <article class="lecture-card" data-id="{{ lecture.id }}">
+            <!-- Poster -->
+            <div class="lecture-poster">
+                {% if lecture.cover_url %}
+                    <img src="{{ lecture.cover_url }}" alt="{{ lecture.title }}" loading="lazy">
+                {% else %}
+                    <div class="lecture-image-placeholder"></div>
+                {% endif %}
+                <div class="lecture-play-icon">
+                    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="18" cy="18" r="18" fill="white" fill-opacity="0.9"/>
+                        <path d="M23.5 18L14.5 23V13L23.5 18Z" fill="#ffa000"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Content -->
+            <div class="lecture-content">
+                <h2 class="lecture-title">
+                    <a href="/lecture/{{ lecture.id }}/">{{ lecture.title }}</a>
+                </h2>
+                
+                <div class="lecture-meta">
+                    <span class="lecture-date">{{ lecture.occurrence_date|date:"d E Y" }}{% if lecture.location %}, {{ lecture.location.name }}{% endif %}</span>
+                </div>
+                
+                {% if lecture.duration %}
+                <div class="lecture-duration">{{ lecture.duration_formatted }}</div>
+                {% endif %}
+                
+                {% if lecture.teaser %}
+                <p class="lecture-teaser">{{ lecture.teaser|truncatewords:25 }}</p>
+                {% endif %}
+                
+                {% if lecture.tags.all %}
+                <div class="lecture-tags">
+                    {% for tag in lecture.tags.all %}
+                        <span class="tag">{{ tag.name }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Hover Controls -->
+                <div class="lecture-controls">
+                    <button class="icon-btn" title="Добавить в избранное" type="button">
+                        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10 18l-1.45-1.32C5.4 13.36 3 11.28 3 8.75 3 6.66 4.66 5 6.75 5c1.18 0 2.32.55 3.05 1.41l.2.25.2-.25C11.07 5.55 12.21 5 13.39 5c2.09 0 3.75 1.66 3.75 3.75 0 2.53-2.4 4.61-5.55 7.93L10 18z" stroke="#2b2b2b" stroke-width="1.5" fill="none"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="Скачать" type="button">
+                        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10 2v8M10 10l-4-4m4 4l4-4M3 14v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="#2b2b2b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="Поделиться" type="button">
+                        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="15" cy="5" r="2" stroke="#2b2b2b" stroke-width="1.5"/>
+                            <circle cx="5" cy="10" r="2" stroke="#2b2b2b" stroke-width="1.5"/>
+                            <circle cx="15" cy="15" r="2" stroke="#2b2b2b" stroke-width="1.5"/>
+                            <path d="M7 9l6-3M7 11l6 3" stroke="#2b2b2b" stroke-width="1.5"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </article>
+        {% empty %}
+        <div class="no-lectures">
+            <p>Нет доступных записей</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_location %}&location={{ selected_location }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" class="page-link">← Назад</a>
+        {% endif %}
+        
+        <span class="page-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+        
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if selected_location %}&location={{ selected_location }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" class="page-link">Вперед →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endif %}
+{% endblock %}

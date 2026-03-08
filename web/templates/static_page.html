@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block banner %}{% endblock %}
+
+{% block content %}
+<div class="static-page">
+    <h1 class="static-page-title">{{ title }}</h1>
+    <div class="static-page-content">
+        {{ content|safe }}
+    </div>
+</div>
+{% endblock %}
