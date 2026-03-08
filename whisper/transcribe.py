@@ -16,16 +16,18 @@ import argparse
 import logging
 from datetime import datetime
 from pathlib import Path
-from multiprocessing import Process, Queue, Value, Manager
+import multiprocessing as mp
+
+# Важливо: встановити spawn метод ДО будь-яких імпортів torch
+mp.set_start_method('spawn', force=True)
+
 from dataclasses import dataclass
 from typing import Optional, List
 from enum import Enum
-import ctypes
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-import torch
 
 # Load environment variables
 load_dotenv()
@@ -132,11 +134,12 @@ def save_draft(media_id: int, draft: str, status: str):
 def worker_process(worker_id: int, task_queue, result_queue, model_name: str, device: str, root_prefix: str):
     """Процес воркера для транскрипції"""
     import whisper
+    import torch
     
     # Завантажити модель в кожному процесі
     logger.info(f"Worker {worker_id}: Loading model '{model_name}' on {device}...")
     model = whisper.load_model(model_name, device=device)
-    logger.info(f"Worker {worker_id}: Model loaded")
+    logger.info(f"Worker {worker_id}: Model loaded, ready to process")
     
     while True:
         task = task_queue.get()
@@ -178,10 +181,15 @@ def run_parallel_transcribe(language: str = 'RUS', workers: int = 4):
     model_name = os.getenv('WHISPER_MODEL', 'medium')
     device = os.getenv('WHISPER_DEVICE', 'cuda')
     
-    # Перевірити GPU
-    if device == 'cuda' and not torch.cuda.is_available():
-        logger.warning("CUDA not available, falling back to CPU")
-        device = 'cpu'
+    # Перевірити GPU (в головному процесі, але без ініціалізації CUDA)
+    if device == 'cuda':
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                logger.warning("CUDA not available, falling back to CPU")
+                device = 'cpu'
+        except:
+            device = 'cpu'
     
     # Отримати записи для обробки
     records = get_media_for_transcribe(language)
@@ -194,9 +202,8 @@ def run_parallel_transcribe(language: str = 'RUS', workers: int = 4):
     logger.info(f"Found {total} files to transcribe with {workers} workers")
     
     # Створити черги
-    manager = Manager()
-    task_queue = manager.Queue()
-    result_queue = manager.Queue()
+    task_queue = mp.Queue()
+    result_queue = mp.Queue()
     
     # Заповнити чергу завдань
     for record in records:
@@ -217,7 +224,7 @@ def run_parallel_transcribe(language: str = 'RUS', workers: int = 4):
     # Запустити воркерів
     processes = []
     for i in range(workers):
-        p = Process(
+        p = mp.Process(
             target=worker_process,
             args=(i, task_queue, result_queue, model_name, device, root_prefix)
         )
