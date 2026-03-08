@@ -313,7 +313,22 @@ def cmd_status(args):
                 status_counts[status] = []
             status_counts[status].append(record)
 
-        print("\nTranscription Status Summary:")
+        total = len(records)
+        finished = len(status_counts.get('finished_transcribe', []))
+        pending = len(status_counts.get('pending', []))
+        in_progress = len(status_counts.get('started_transcribe', []))
+        
+        # Обчислити відсоток
+        percent = (finished / total * 100) if total > 0 else 0
+        
+        print("\n" + "=" * 80)
+        print("TRANSCRIPTION STATUS SUMMARY")
+        print("=" * 80)
+        print(f"\nTotal audio files: {total}")
+        print(f"Finished: {finished} ({percent:.1f}%)")
+        print(f"In progress: {in_progress}")
+        print(f"Pending: {pending}")
+        print(f"Remaining: {pending + in_progress}")
         print("=" * 80)
         
         for status, items in sorted(status_counts.items()):
