@@ -2,22 +2,20 @@
 
 Транскрипція аудіо лекцій з використанням OpenAI Whisper.
 
-## Залежності системи
+## Залежності системи (Ubuntu)
 
-**ВАЖЛИВО:** Перед запуском необхідно встановити ffmpeg:
+**ВАЖЛИВО:** Перед запуском необхідно встановити системні залежності:
 
 ```bash
-# Ubuntu/Debian
-sudo apt update && sudo apt install ffmpeg
+# Ubuntu/Debian - всі необхідні пакети
+sudo apt update && sudo apt install -y \
+    ffmpeg \
+    python3-pip \
+    python3-venv \
+    nvidia-cuda-toolkit
 
-# Fedora
-sudo dnf install ffmpeg
-
-# Arch Linux
-sudo pacman -S ffmpeg
-
-# macOS
-brew install ffmpeg
+# Перевірити CUDA
+nvidia-smi
 ```
 
 ## Швидкий старт
@@ -38,8 +36,25 @@ pip install -r requirements.txt
 # 5. Перевірити список файлів для транскрипції
 python transcribe.py list --lang=RUS
 
-# 6. Запустити транскрипцію
-python transcribe.py run --lang=RUS
+# 6. Запустити транскрипцію (4 паралельні процеси)
+python transcribe.py run --lang=RUS --workers=4
+```
+
+## Паралельна обробка
+
+Скрипт використовує **multiprocessing** для паралельної транскрипції:
+
+- Кожен воркер - окремий процес з власною копією моделі
+- Кількість воркерів: `--workers=4` (за замовчуванням 4)
+- Кожен воркер завантажує ~1.5GB GPU пам'яті (medium модель)
+- Для 24GB GPU можна використовувати до 4-6 воркерів
+
+```bash
+# Запустити з 4 воркерами
+python transcribe.py run --lang=RUS --workers=4
+
+# Або налаштувати в .env
+WHISPER_THREADS=4
 ```
 
 ## Встановлення (детально)
