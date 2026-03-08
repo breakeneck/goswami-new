@@ -2,6 +2,24 @@
 
 Транскрипція аудіо лекцій з використанням OpenAI Whisper.
 
+## Залежності системи
+
+**ВАЖЛИВО:** Перед запуском необхідно встановити ffmpeg:
+
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# Fedora
+sudo dnf install ffmpeg
+
+# Arch Linux
+sudo pacman -S ffmpeg
+
+# macOS
+brew install ffmpeg
+```
+
 ## Швидкий старт
 
 ```bash

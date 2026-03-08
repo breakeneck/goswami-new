@@ -4,7 +4,7 @@
 
 set -e
 
-DUMP_FILE="$1"
+DUMP_FILE="${1:-database/dumps/pgdump_goswami.ru_2026-01-24T03_21_54}"
 CONTAINER_NAME="goswami-new-goswami-ru-db-1"
 DB_NAME="goswami.ru"
 DB_USER="postgres"
@@ -32,11 +32,11 @@ docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d postgres -c \
 
 echo "Dropping database..."
 docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d postgres -c \
-    "DROP DATABASE IF EXISTS $DB_NAME;" || true
+    "DROP DATABASE IF EXISTS \"$DB_NAME\";" || true
 
 echo "Creating database..."
 docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d postgres -c \
-    "CREATE DATABASE $DB_NAME;"
+    "CREATE DATABASE \"$DB_NAME\";"
 
 echo "Restoring from dump..."
 cat "$DUMP_FILE" | docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME"
