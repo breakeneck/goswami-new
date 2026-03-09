@@ -1,13 +1,10 @@
 # Whisper Transcriber
 
-Транскрипція аудіо лекцій з використанням OpenAI Whisper.
+Транскрипція аудіо лекцій з використанням OpenAI Whisper або Faster-Whisper.
 
 ## Залежності системи (Ubuntu)
 
-**ВАЖЛИВО:** Перед запуском необхідно встановити системні залежності:
-
 ```bash
-# Ubuntu/Debian - всі необхідні пакети
 sudo apt update && sudo apt install -y \
     ffmpeg \
     python3-pip \
@@ -21,108 +18,89 @@ nvidia-smi
 ## Швидкий старт
 
 ```bash
-# 1. Перейти в директорію whisper
 cd whisper
-
-# 2. Створити віртуальне середовище
 python3 -m venv venv
-
-# 3. Активувати venv
 source venv/bin/activate
-
-# 4. Встановити залежності
 pip install -r requirements.txt
 
-# 5. Перевірити список файлів для транскрипції
+# Список файлів для транскрипції
 python transcribe.py list --lang=RUS
 
-# 6. Запустити транскрипцію (4 паралельні процеси)
+# Запустити транскрипцію (OpenAI Whisper)
 python transcribe.py run --lang=RUS --workers=4
+
+# Запустити з Faster-Whisper (швидше, менше пам'яті)
+python transcribe.py run --lang=RUS --engine=faster-whisper --model=large-v3 --workers=4
 ```
+
+## Движки транскрипції
+
+### OpenAI Whisper
+```bash
+python transcribe.py run --engine=whisper --model=medium --workers=4
+```
+
+### Faster-Whisper (рекомендується)
+```bash
+# Завантажити модель
+python transcribe.py download --engine=faster-whisper --model=large-v3
+
+# Запустити
+python transcribe.py run --engine=faster-whisper --model=large-v3 --workers=4
+```
+
+**Переваги Faster-Whisper:**
+- Швидше (CTranslate2 оптимізація)
+- Менше використання пам'яті
+- Підтримка large-v3 моделі
+
+## Моделі
+
+| Модель | Пам'ять (Whisper) | Пам'ять (Faster-Whisper) | Швидкість |
+|--------|-------------------|--------------------------|-----------|
+| tiny | ~1GB | ~0.5GB | найшвидша |
+| base | ~1GB | ~0.5GB | швидка |
+| small | ~2GB | ~1GB | середня |
+| medium | ~5GB | ~2.5GB | повільна |
+| large-v3 | ~10GB | ~5GB | найповільніша, найкраща якість |
 
 ## Паралельна обробка
 
-Скрипт використовує **multiprocessing** для паралельної транскрипції:
+```bash
+# 4 воркери з Faster-Whisper large-v3 (~20GB GPU)
+python transcribe.py run --engine=faster-whisper --model=large-v3 --workers=4
 
-- Кожен воркер - окремий процес з власною копією моделі
-- Кількість воркерів: `--workers=4` (за замовчуванням 4)
-- Кожен воркер завантажує ~1.5GB GPU пам'яті (medium модель)
-- Для 24GB GPU можна використовувати до 4-6 воркерів
+# 2 воркери з Whisper medium (~10GB GPU)
+python transcribe.py run --engine=whisper --model=medium --workers=2
+```
+
+## Команди
 
 ```bash
-# Запустити з 4 воркерами
+# Список файлів
+python transcribe.py list --lang=RUS
+
+# Запустити транскрипцію
 python transcribe.py run --lang=RUS --workers=4
 
-# Або налаштувати в .env
-WHISPER_THREADS=4
-```
-
-## Встановлення (детально)
-
-```bash
-cd whisper
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Налаштування
-
-Файл `.env` вже створено з налаштуваннями за замовчуванням.
-
-### Параметри:
-
-- `DB_NAME` - ім'я бази даних (default: goswami.ru)
-- `DB_USER` - користувач БД (default: postgres)
-- `DB_PASSWORD` - пароль БД (default: postgres)
-- `DB_HOST` - хост БД (default: localhost)
-- `DB_PORT` - порт БД (default: 5431)
-- `MEDIA_ROOT_PREFIX` - шлях до аудіо файлів (default: ~/hdd/media/bvgm.su)
-- `WHISPER_MODEL` - модель Whisper (default: medium)
-- `WHISPER_DEVICE` - пристрій для обробки (default: cuda)
-- `WHISPER_THREADS` - кількість потоків (default: 4)
-
-## Структура файлів
-
-Аудіо файли повинні бути організовані так:
-```
-MEDIA_ROOT_PREFIX/
-├── 2024/
-│   ├── 01/
-│   │   └── audio_file.mp3
-│   ├── 02/
-│   │   └── audio_file.mp3
-│   └── ...
-└── 2025/
-    └── ...
-```
-
-Шлях формується як: `MEDIA_ROOT_PREFIX/YEAR/MONTH/file_url`
-
-## Використання
-
-### Показати список файлів для транскрипції
-
-```bash
-python transcribe.py list --lang=RUS
-```
-
-### Запустити транскрипцію
-
-```bash
-python transcribe.py run --lang=RUS
-```
-
-### Показати статус всіх записів
-
-```bash
+# Показати статус
 python transcribe.py status
+
+# Скинути статус запису
+python transcribe.py reset 123
+
+# Завантажити модель
+python transcribe.py download --engine=faster-whisper --model=large-v3
 ```
 
-### Скинути статус запису
+## Налаштування (.env)
 
 ```bash
-python transcribe.py reset <media_id>
+WHISPER_ENGINE=whisper        # або faster-whisper
+WHISPER_MODEL=medium          # або large-v3
+WHISPER_DEVICE=cuda           # або cpu
+WHISPER_THREADS=4             # кількість воркерів
+MEDIA_ROOT_PREFIX=~/hdd/media/bvgm.su
 ```
 
 ## Статуси транскрипції
@@ -133,33 +111,15 @@ python transcribe.py reset <media_id>
 - `started_formatting` - почато форматування (LLM)
 - `finished_formatting` - завершено форматування
 
-## Поля в базі даних
-
-Додані поля до таблиці `media`:
-
-- `draft` - текст транскрипції (raw output from Whisper)
-- `transcribe_status` - статус транскрипції
-
 ## Відновлення перерваної транскрипції
 
-Якщо транскрипція була перервана:
+```bash
+# Перевірити статус
+python transcribe.py status
 
-1. Перевірте статус: `python transcribe.py status`
-2. Запишіть ID записів зі статусом `started_transcribe`
-3. Скиньте статус: `python transcribe.py reset <media_id>`
-4. Запустіть транскрипцію знову: `python transcribe.py run`
+# Скинути завислі записи
+python transcribe.py reset <media_id>
 
-## GPU прискорення
-
-Для використання GPU (NVIDIA 3090):
-
-1. Встановіть CUDA драйвери
-2. Встановіть PyTorch з CUDA підтримкою
-3. Встановіть `WHISPER_DEVICE=cuda` в `.env`
-
-Перевірити доступність CUDA:
-
-```python
-import torch
-print(torch.cuda.is_available())
+# Запустити знову
+python transcribe.py run --lang=RUS
 ```
