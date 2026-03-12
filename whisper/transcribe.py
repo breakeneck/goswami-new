@@ -15,7 +15,7 @@ import os
 import sys
 import argparse
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -124,19 +124,69 @@ class Database:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 if language:
                     cur.execute("""
-                        SELECT id, title, transcribe_status
+                        SELECT id, title, transcribe_status, duration, text
                         FROM media
                         WHERE type = 'audio' AND language = %s
                         ORDER BY occurrence_date DESC
                     """, (language,))
                 else:
                     cur.execute("""
-                        SELECT id, title, transcribe_status
+                        SELECT id, title, transcribe_status, duration, text
                         FROM media
                         WHERE type = 'audio'
                         ORDER BY occurrence_date DESC
                     """)
                 return [dict(row) for row in cur.fetchall()]
+
+    def get_transcribe_progress_data(self, language: Optional[str] = None) -> dict:
+        """Отримати дані для розрахунку прогресу транскрипції"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Запит для отримання статистики по статусах та тривалості
+                if language:
+                    cur.execute("""
+                        SELECT 
+                            transcribe_status,
+                            COUNT(*) as count,
+                            COALESCE(SUM(EXTRACT(EPOCH FROM duration)), 0) as total_duration
+                        FROM media
+                        WHERE type = 'audio' 
+                          AND language = %s
+                          AND file_url IS NOT NULL
+                          AND file_url != ''
+                          AND (text IS NULL OR text = '')
+                        GROUP BY transcribe_status
+                    """, (language,))
+                else:
+                    cur.execute("""
+                        SELECT 
+                            transcribe_status,
+                            COUNT(*) as count,
+                            COALESCE(SUM(EXTRACT(EPOCH FROM duration)), 0) as total_duration
+                        FROM media
+                        WHERE type = 'audio'
+                          AND file_url IS NOT NULL
+                          AND file_url != ''
+                          AND (text IS NULL OR text = '')
+                        GROUP BY transcribe_status
+                    """)
+                rows = cur.fetchall()
+                
+                result = {
+                    'pending': {'count': 0, 'duration': 0.0},
+                    'started_transcribe': {'count': 0, 'duration': 0.0},
+                    'finished_transcribe': {'count': 0, 'duration': 0.0},
+                    'started_formatting': {'count': 0, 'duration': 0.0},
+                    'finished_formatting': {'count': 0, 'duration': 0.0},
+                }
+                
+                for row in rows:
+                    status = row['transcribe_status'] or 'pending'
+                    if status in result:
+                        result[status]['count'] = row['count']
+                        result[status]['duration'] = float(row['total_duration'])
+                
+                return result
 
     def update_status(self, media_id: int, status: Optional[str]):
         """Оновити статус транскрипції"""
@@ -655,23 +705,88 @@ def cmd_status(args):
     pending = len(status_counts.get('pending', []))
     in_progress = len(status_counts.get('started_transcribe', []))
 
-    percent = (finished / total * 100) if total > 0 else 0
+    # Розрахунок тривалості
+    def get_duration_seconds(duration_val) -> float:
+        """Конвертувати duration в секунди"""
+        if duration_val is None:
+            return 0.0
+        # PostgreSQL interval повертається як timedelta
+        if hasattr(duration_val, 'total_seconds'):
+            return duration_val.total_seconds()
+        # Якщо це рядок у форматі HH:MM:SS або подібному
+        if isinstance(duration_val, str):
+            parts = duration_val.split(':')
+            if len(parts) == 3:
+                try:
+                    hours, minutes, seconds = map(float, parts)
+                    return hours * 3600 + minutes * 60 + seconds
+                except ValueError:
+                    pass
+        return 0.0
+
+    def format_duration(seconds: float) -> str:
+        """Форматувати секунди у H:MM:SS"""
+        if seconds <= 0:
+            return "0:00:00"
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+
+    # Загальна тривалість всіх аудіо
+    total_duration = sum(get_duration_seconds(r['duration']) for r in records)
+    
+    # Тривалість транскрибованих (finished_transcribe)
+    transcribed_duration = sum(
+        get_duration_seconds(r['duration']) 
+        for r in records 
+        if r['transcribe_status'] == 'finished_transcribe'
+    )
+    
+    # Лекції без text (потребують транскрипції)
+    records_without_text = [r for r in records if not r['text']]
+    without_text_count = len(records_without_text)
+    without_text_duration = sum(get_duration_seconds(r['duration']) for r in records_without_text)
+    
+    # Транскрибовані з тих, що без text
+    transcribed_without_text = [
+        r for r in records_without_text 
+        if r['transcribe_status'] == 'finished_transcribe'
+    ]
+    transcribed_without_text_duration = sum(
+        get_duration_seconds(r['duration']) for r in transcribed_without_text
+    )
+
+    # Відсотки
+    percent_by_count = (finished / total * 100) if total > 0 else 0
+    percent_by_duration = (transcribed_duration / total_duration * 100) if total_duration > 0 else 0
+    percent_without_text = (transcribed_without_text_duration / without_text_duration * 100) if without_text_duration > 0 else 0
 
     print("\n" + "=" * 80)
     print("TRANSCRIPTION STATUS SUMMARY")
     print("=" * 80)
     print(f"\nTotal audio files: {total}")
-    print(f"Finished: {finished} ({percent:.1f}%)")
+    print(f"Total duration: {format_duration(total_duration)}")
+    print()
+    print(f"Finished: {finished} ({percent_by_count:.1f}% by count)")
+    print(f"Finished duration: {format_duration(transcribed_duration)} ({percent_by_duration:.1f}% by duration)")
     print(f"In progress: {in_progress}")
     print(f"Pending: {pending}")
     print(f"Remaining: {pending + in_progress}")
+    print()
+    print("-" * 80)
+    print(f"Lectures without text: {without_text_count}")
+    print(f"Duration without text: {format_duration(without_text_duration)}")
+    print(f"Transcribed (of those without text): {len(transcribed_without_text)}")
+    print(f"Transcribed duration (of those without text): {format_duration(transcribed_without_text_duration)} ({percent_without_text:.1f}%)")
     print("=" * 80)
 
     for status, items in sorted(status_counts.items()):
         print(f"\n{status.upper()}: {len(items)}")
         print("-" * 40)
         for record in items[:10]:
-            print(f"  [{record['id']}] {record['title'][:50]}...")
+            duration_str = format_duration(get_duration_seconds(record['duration']))
+            print(f"  [{record['id']}] ({duration_str}) {record['title'][:50]}...")
         if len(items) > 10:
             print(f"  ... and {len(items) - 10} more")
 
@@ -691,6 +806,118 @@ def cmd_download(args):
     ModelDownloader.download(engine_type, model_name)
 
 
+def cmd_progress(args):
+    """Показати прогрес транскрипції з ETA"""
+    from datetime import datetime as dt
+    
+    db = Database()
+    
+    # Парсимо start_time
+    start_time_str = args.start_time
+    try:
+        # Формат: "2026-03-12 09:31:18"
+        start_time = dt.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        try:
+            # Альтернативний формат без секунд
+            start_time = dt.strptime(start_time_str, '%Y-%m-%d %H:%M')
+        except ValueError:
+            print(f"Error: Invalid start_time format. Use 'YYYY-MM-DD HH:MM:SS'")
+            return
+    
+    current_time = dt.now()
+    elapsed_seconds = (current_time - start_time).total_seconds()
+    
+    if elapsed_seconds <= 0:
+        print(f"Error: start_time is in the future")
+        return
+    
+    # Отримуємо дані для вказаної мови або для всіх
+    languages = [args.lang] if args.lang else ['RUS', 'ENG']
+    
+    def format_duration(seconds: float) -> str:
+        """Форматувати секунди у H:MM:SS"""
+        if seconds <= 0:
+            return "0:00:00"
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    
+    def format_eta(seconds: float) -> str:
+        """Форматувати ETA"""
+        if seconds <= 0:
+            return "N/A"
+        if seconds > 86400:  # більше доби
+            days = int(seconds // 86400)
+            remaining = seconds % 86400
+            hours = int(remaining // 3600)
+            return f"{days}d {hours}h"
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h {minutes}m"
+    
+    print("\n" + "=" * 80)
+    print("TRANSCRIPTION PROGRESS")
+    print("=" * 80)
+    print(f"Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Elapsed: {format_duration(elapsed_seconds)}")
+    print("=" * 80)
+    
+    for lang in languages:
+        data = db.get_transcribe_progress_data(lang)
+        
+        # Розрахунок загальних значень
+        total_count = sum(s['count'] for s in data.values())
+        total_duration = sum(s['duration'] for s in data.values())
+        
+        finished_count = data['finished_transcribe']['count']
+        finished_duration = data['finished_transcribe']['duration']
+        
+        in_progress_count = data['started_transcribe']['count']
+        in_progress_duration = data['started_transcribe']['duration']
+        
+        pending_count = data['pending']['count']
+        pending_duration = data['pending']['duration']
+        
+        # Відсотки
+        percent_by_count = (finished_count / total_count * 100) if total_count > 0 else 0
+        percent_by_duration = (finished_duration / total_duration * 100) if total_duration > 0 else 0
+        
+        # Швидкість транскрипції (x)
+        # x = audio_duration / real_time
+        if elapsed_seconds > 0 and finished_duration > 0:
+            speed_x = finished_duration / elapsed_seconds
+        else:
+            speed_x = 0
+        
+        # ETA
+        remaining_duration = pending_duration + in_progress_duration
+        if speed_x > 0:
+            eta_seconds = remaining_duration / speed_x
+        else:
+            eta_seconds = 0
+        
+        print(f"\n--- {lang} ---")
+        print(f"Total files: {total_count}")
+        print(f"Total duration: {format_duration(total_duration)}")
+        print()
+        print(f"Finished: {finished_count} ({percent_by_count:.1f}% by count)")
+        print(f"Finished duration: {format_duration(finished_duration)} ({percent_by_duration:.1f}% by duration)")
+        print(f"In progress: {in_progress_count} ({format_duration(in_progress_duration)})")
+        print(f"Pending: {pending_count} ({format_duration(pending_duration)})")
+        print()
+        print(f"Speed: {speed_x:.1f}x")
+        print(f"ETA: {format_eta(eta_seconds)}")
+        
+        if eta_seconds > 0:
+            estimated_end = current_time + timedelta(seconds=eta_seconds)
+            print(f"Estimated finish: {estimated_end.strftime('%Y-%m-%d %H:%M')}")
+    
+    print("\n" + "=" * 80)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Whisper Transcriber CLI',
@@ -701,6 +928,8 @@ Examples:
     python transcribe.py run --lang=RUS --workers=4
     python transcribe.py run --lang=RUS --engine=faster-whisper --model=large-v3
     python transcribe.py status
+    python transcribe.py progress --start-time="2026-03-12 09:31:18" --lang=RUS
+    python transcribe.py progress --start-time="2026-03-12 09:31:18"
     python transcribe.py reset 123
     python transcribe.py download --engine=faster-whisper --model=large-v3
         """
@@ -737,6 +966,14 @@ Examples:
     download_parser.add_argument('--engine', choices=['whisper', 'faster-whisper'], default='faster-whisper')
     download_parser.add_argument('--model', default='large-v3', help='Model name')
     download_parser.set_defaults(func=cmd_download)
+
+    # progress command
+    progress_parser = subparsers.add_parser('progress', help='Show transcription progress with ETA')
+    progress_parser.add_argument('--start-time', required=True, 
+                                  help='Start time in format "YYYY-MM-DD HH:MM:SS"')
+    progress_parser.add_argument('--lang', default=None, 
+                                  help='Language filter (default: show all languages)')
+    progress_parser.set_defaults(func=cmd_progress)
 
     args = parser.parse_args()
 

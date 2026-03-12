@@ -47,6 +47,19 @@ echo ""
 echo "Running migrations..."
 docker compose exec -T web python manage.py migrate --run-syncdb || true
 
+# Run SQL migrations for transcribe fields
+echo ""
+echo "Running SQL migrations..."
+docker compose exec -T goswami-ru-db psql -U postgres -d goswami.ru -c "
+ALTER TABLE media ADD COLUMN IF NOT EXISTS draft TEXT;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS transcribe_txt TEXT;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS transcribe_lrc TEXT;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS transcribe_srt TEXT;
+ALTER TABLE media ADD COLUMN IF NOT EXISTS transcribe_status VARCHAR(32) DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_media_transcribe_status ON media(transcribe_status);
+CREATE INDEX IF NOT EXISTS idx_media_language ON media(language);
+" || true
+
 # Collect static files
 echo ""
 echo "Collecting static files..."
