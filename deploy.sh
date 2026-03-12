@@ -11,7 +11,10 @@ echo ""
 
 # Pull latest changes
 echo "[1/6] Pulling latest changes..."
-git pull origin main || git pull origin master || echo "Git pull skipped (not a git repo or no remote)"
+git fetch origin &&
+git reset --hard origin/main &&
+git clean -fd &&
+git log -1 --pretty=format:"%h %s"
 
 # Stop existing containers
 echo ""

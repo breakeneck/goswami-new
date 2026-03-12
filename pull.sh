@@ -1,2 +1,6 @@
-git pull origin main || git pull origin master || echo "Git pull skipped (not a git repo or no remote)"
-git log -1 --pretty=%B
+git fetch origin &&
+git reset --hard origin/main &&
+git clean -fd &&
+git log -1 --pretty=format:"%h %s"
+
+docker compose exec -T web python manage.py migrate --run-syncdb || true
