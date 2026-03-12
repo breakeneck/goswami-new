@@ -196,9 +196,13 @@ class TranscriptionEngine(ABC):
         pass
 
     @abstractmethod
-    def transcribe(self, audio_path: str) -> dict:
+    def transcribe(self, audio_path: str, language: str = 'ru') -> dict:
         """
         Транскрибувати аудіо файл.
+        
+        Args:
+            audio_path: шлях до аудіо файлу
+            language: мова транскрипції ('ru' або 'en')
         
         Returns:
             dict з ключами:
@@ -225,15 +229,19 @@ class WhisperEngine(TranscriptionEngine):
         logger.info("Whisper model loaded successfully")
         return model
 
-    def transcribe(self, audio_path: str) -> dict:
+    def transcribe(self, audio_path: str, language: str = 'ru') -> dict:
         """
         Транскрибувати аудіо файл (OpenAI Whisper).
         Примітка: OpenAI Whisper не надає часові мітки за замовчуванням,
         тому LRC та SRT будуть порожніми.
+        
+        Args:
+            audio_path: шлях до аудіо файлу
+            language: мова транскрипції ('ru' або 'en')
         """
         result = self.model.transcribe(
             audio_path,
-            language='ru',
+            language=language,
             task='transcribe',
             verbose=False
         )
@@ -248,14 +256,23 @@ class WhisperEngine(TranscriptionEngine):
 class FasterWhisperEngine(TranscriptionEngine):
     """Faster-Whisper движок (CTranslate2)"""
 
-    # Initial prompt для кращого розпізнавання санскритських термінів
-    INITIAL_PROMPT = """Харе Кришна. Это устная лекция на русском языке.
+    # Initial prompts для кращого розпізнавання санскритських термінів
+    INITIAL_PROMPTS = {
+        'ru': """Харе Кришна. Это устная лекция на русском языке.
         В речи присутствует большое количество санскритских имён,
         эпитетов и терминов гаудия-вайшнавской традиции.
         Присутствуют имена и названия, связанные с Кришной,
         Радхой, Враджем, преданными, ачарьями, лилами и шастрами.
         Текст передаётся дословно, без художественной обработки.
+        """,
+        'en': """Hare Krishna. This is an oral lecture in English.
+        The speech contains many Sanskrit names,
+        epithets and terms of the Gaudiya Vaishnava tradition.
+        There are names and titles related to Krishna,
+        Radha, Vraja, devotees, acharyas, lilas and shastras.
+        The text is transmitted verbatim, without artistic processing.
         """
+    }
 
     def __init__(self, model_name: str, device: str = 'cuda', compute_type: str = 'int8_float16'):
         super().__init__(model_name, device)
@@ -279,9 +296,13 @@ class FasterWhisperEngine(TranscriptionEngine):
         logger.info("Faster-Whisper model loaded successfully")
         return model
 
-    def transcribe(self, audio_path: str) -> dict:
+    def transcribe(self, audio_path: str, language: str = 'ru') -> dict:
         """
         Транскрибувати аудіо файл.
+        
+        Args:
+            audio_path: шлях до аудіо файлу
+            language: мова транскрипції ('ru' або 'en')
         
         Returns:
             dict з ключами:
@@ -289,13 +310,16 @@ class FasterWhisperEngine(TranscriptionEngine):
                 - 'lrc': формат LRC (субтитри з часом)
                 - 'srt': формат SRT (субтитри)
         """
+        # Визначаємо initial_prompt на основі мови
+        initial_prompt = self.INITIAL_PROMPTS.get(language, self.INITIAL_PROMPTS['ru'])
+        
         segments, info = self.model.transcribe(
             audio_path,
             beam_size=1,  # Greedy decoding like regular Whisper default
             temperature=0.0,  # Start with 0, will fallback if needed
-            language='ru',
+            language=language,
             task='transcribe',
-            initial_prompt=self.INITIAL_PROMPT,
+            initial_prompt=initial_prompt,
             condition_on_previous_text=False,
             compression_ratio_threshold=2.4,  # Default in Whisper
             log_prob_threshold=-1.0,  # Default in Whisper
@@ -393,14 +417,15 @@ def worker_process(
     engine_type: str,
     model_name: str,
     device: str,
-    root_prefix: str
+    root_prefix: str,
+    language: str = 'ru'
 ):
     """Процес воркера для транскрипції"""
     
     # Створити движок в кожному процесі
     engine = EngineFactory.create(engine_type, model_name, device)
     engine.load_model()
-    logger.info(f"Worker {worker_id}: Ready to process")
+    logger.info(f"Worker {worker_id}: Ready to process (language={language})")
     
     while True:
         task = task_queue.get()
@@ -416,7 +441,7 @@ def worker_process(
         
         try:
             logger.info(f"Worker {worker_id}: Transcribing {record_id} - {title[:40]}...")
-            transcription = engine.transcribe(audio_path)
+            transcription = engine.transcribe(audio_path, language=language)
             result_queue.put((record_id, transcription, None))
             logger.info(f"Worker {worker_id}: Finished {record_id}")
         except Exception as e:
@@ -456,9 +481,12 @@ class TranscriptionJob:
             logger.info("No media files found for transcription")
             return
 
+        # Конвертуємо мову з формату БД ('RUS', 'ENG') у формат Whisper ('ru', 'en')
+        whisper_lang = 'ru' if language.upper() == 'RUS' else 'en'
+        
         total = len(records)
         logger.info(f"Found {total} files to transcribe with {self.workers} workers")
-        logger.info(f"Engine: {self.engine_type}, Model: {self.model_name}, Device: {self.device}")
+        logger.info(f"Engine: {self.engine_type}, Model: {self.model_name}, Device: {self.device}, Language: {whisper_lang}")
 
         # Створити черги
         task_queue = mp.Queue()
@@ -490,7 +518,8 @@ class TranscriptionJob:
                     self.engine_type,
                     self.model_name,
                     self.device,
-                    self.root_prefix
+                    self.root_prefix,
+                    whisper_lang
                 )
             )
             p.start()
