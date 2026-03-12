@@ -3,6 +3,8 @@
 # Використання: ./run.sh [LANGUAGE] [THREADS]
 # Приклад: ./run.sh RUS 4
 #          ./run.sh ENG 2
+source venv/bin/activate
+pip install -r requirements.txt
 
 # Параметри за замовчуванням
 LANGUAGE=${1:-RUS}
