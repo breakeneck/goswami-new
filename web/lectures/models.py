@@ -98,6 +98,9 @@ class Media(models.Model):
     
     # Поля для транскрипції Whisper
     draft = models.TextField(blank=True, null=True, verbose_name='Чернетка транскрипції')
+    transcribe_txt = models.TextField(blank=True, null=True, verbose_name='Транскрипція (текст)')
+    transcribe_lrc = models.TextField(blank=True, null=True, verbose_name='Транскрипція (LRC)')
+    transcribe_srt = models.TextField(blank=True, null=True, verbose_name='Транскрипція (SRT)')
     TRANSCRIBE_STATUS_CHOICES = [
         (None, 'Очікує'),
         ('started_transcribe', 'Почато транскрипцію'),

@@ -149,12 +149,31 @@ class Database:
                 conn.commit()
 
     def save_draft(self, media_id: int, draft: str, status: str):
-        """Зберегти чернетку транскрипції"""
+        """Зберегти чернетку транскрипції (застарілий метод для сумісності)"""
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE media SET draft = %s, transcribe_status = %s WHERE id = %s",
                     (draft, status, media_id)
+                )
+                conn.commit()
+
+    def save_transcription(self, media_id: int, transcription: dict, status: str):
+        """Зберегти транскрипцію у всіх форматах"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE media 
+                       SET transcribe_txt = %s, 
+                           transcribe_lrc = %s, 
+                           transcribe_srt = %s, 
+                           transcribe_status = %s 
+                       WHERE id = %s""",
+                    (transcription.get('txt'), 
+                     transcription.get('lrc'), 
+                     transcription.get('srt'), 
+                     status, 
+                     media_id)
                 )
                 conn.commit()
 
@@ -177,8 +196,16 @@ class TranscriptionEngine(ABC):
         pass
 
     @abstractmethod
-    def transcribe(self, audio_path: str) -> str:
-        """Транскрибувати аудіо файл"""
+    def transcribe(self, audio_path: str) -> dict:
+        """
+        Транскрибувати аудіо файл.
+        
+        Returns:
+            dict з ключами:
+                - 'txt': звичайний текст
+                - 'lrc': формат LRC (субтитри з часом)
+                - 'srt': формат SRT (субтитри)
+        """
         pass
 
     @property
@@ -198,20 +225,39 @@ class WhisperEngine(TranscriptionEngine):
         logger.info("Whisper model loaded successfully")
         return model
 
-    def transcribe(self, audio_path: str) -> str:
+    def transcribe(self, audio_path: str) -> dict:
+        """
+        Транскрибувати аудіо файл (OpenAI Whisper).
+        Примітка: OpenAI Whisper не надає часові мітки за замовчуванням,
+        тому LRC та SRT будуть порожніми.
+        """
         result = self.model.transcribe(
             audio_path,
             language='ru',
             task='transcribe',
             verbose=False
         )
-        return result['text']
+        txt = result['text']
+        return {
+            'txt': txt,
+            'lrc': '',  # OpenAI Whisper не надає часові мітки без додаткової обробки
+            'srt': ''   # OpenAI Whisper не надає часові мітки без додаткової обробки
+        }
 
 
 class FasterWhisperEngine(TranscriptionEngine):
     """Faster-Whisper движок (CTranslate2)"""
 
-    def __init__(self, model_name: str, device: str = 'cuda', compute_type: str = 'float16'):
+    # Initial prompt для кращого розпізнавання санскритських термінів
+    INITIAL_PROMPT = """Харе Кришна. Это устная лекция на русском языке.
+        В речи присутствует большое количество санскритских имён,
+        эпитетов и терминов гаудия-вайшнавской традиции.
+        Присутствуют имена и названия, связанные с Кришной,
+        Радхой, Враджем, преданными, ачарьями, лилами и шастрами.
+        Текст передаётся дословно, без художественной обработки.
+        """
+
+    def __init__(self, model_name: str, device: str = 'cuda', compute_type: str = 'int8_float16'):
         super().__init__(model_name, device)
         self.compute_type = compute_type
 
@@ -233,14 +279,94 @@ class FasterWhisperEngine(TranscriptionEngine):
         logger.info("Faster-Whisper model loaded successfully")
         return model
 
-    def transcribe(self, audio_path: str) -> str:
+    def transcribe(self, audio_path: str) -> dict:
+        """
+        Транскрибувати аудіо файл.
+        
+        Returns:
+            dict з ключами:
+                - 'txt': звичайний текст
+                - 'lrc': формат LRC (субтитри з часом)
+                - 'srt': формат SRT (субтитри)
+        """
         segments, info = self.model.transcribe(
             audio_path,
+            beam_size=1,  # Greedy decoding like regular Whisper default
+            temperature=0.0,  # Start with 0, will fallback if needed
             language='ru',
-            task='transcribe'
+            task='transcribe',
+            initial_prompt=self.INITIAL_PROMPT,
+            condition_on_previous_text=False,
+            compression_ratio_threshold=2.4,  # Default in Whisper
+            log_prob_threshold=-1.0,  # Default in Whisper
+            no_speech_threshold=0.6,  # Default in Whisper
         )
-        # Об'єднати всі сегменти в один текст
-        return ''.join(segment.text for segment in segments)
+        
+        # Збираємо сегменти у список для багаторазового використання
+        segments_list = list(segments)
+        
+        # Генеруємо різні формати
+        txt = ''.join(segment.text for segment in segments_list)
+        lrc = self._generate_lrc(segments_list)
+        srt = self._generate_srt(segments_list)
+        
+        return {
+            'txt': txt,
+            'lrc': lrc,
+            'srt': srt
+        }
+
+    def _generate_lrc(self, segments: list) -> str:
+        """
+        Генерувати LRC формат.
+        Формат: [mm:ss.xx]текст
+        """
+        lines = []
+        for segment in segments:
+            start_time = segment.start
+            minutes = int(start_time // 60)
+            seconds = start_time % 60
+            # LRC формат: [mm:ss.xx]
+            time_str = f"[{minutes:02d}:{seconds:05.2f}]"
+            text = segment.text.strip()
+            if text:
+                lines.append(f"{time_str}{text}")
+        return '\n'.join(lines)
+
+    def _generate_srt(self, segments: list) -> str:
+        """
+        Генерувати SRT формат.
+        Формат:
+        1
+        00:00:00,000 --> 00:00:05,000
+        текст
+        """
+        lines = []
+        for i, segment in enumerate(segments, 1):
+            start_time = segment.start
+            end_time = segment.end
+            
+            # SRT формат часу: HH:MM:SS,mmm
+            start_h = int(start_time // 3600)
+            start_m = int((start_time % 3600) // 60)
+            start_s = int(start_time % 60)
+            start_ms = int((start_time % 1) * 1000)
+            
+            end_h = int(end_time // 3600)
+            end_m = int((end_time % 3600) // 60)
+            end_s = int(end_time % 60)
+            end_ms = int((end_time % 1) * 1000)
+            
+            time_start = f"{start_h:02d}:{start_m:02d}:{start_s:02d},{start_ms:03d}"
+            time_end = f"{end_h:02d}:{end_m:02d}:{end_s:02d},{end_ms:03d}"
+            
+            text = segment.text.strip()
+            if text:
+                lines.append(f"{i}")
+                lines.append(f"{time_start} --> {time_end}")
+                lines.append(text)
+                lines.append("")  # Порожній рядок між блоками
+        return '\n'.join(lines)
 
 
 class EngineFactory:
@@ -290,8 +416,8 @@ def worker_process(
         
         try:
             logger.info(f"Worker {worker_id}: Transcribing {record_id} - {title[:40]}...")
-            draft = engine.transcribe(audio_path)
-            result_queue.put((record_id, draft, None))
+            transcription = engine.transcribe(audio_path)
+            result_queue.put((record_id, transcription, None))
             logger.info(f"Worker {worker_id}: Finished {record_id}")
         except Exception as e:
             result_queue.put((record_id, None, str(e)))
@@ -375,7 +501,7 @@ class TranscriptionJob:
         failed = 0
 
         while completed + failed < total:
-            record_id, draft, error = result_queue.get()
+            record_id, transcription, error = result_queue.get()
 
             if error:
                 logger.error(f"Error for media {record_id}: {error}")
@@ -383,7 +509,7 @@ class TranscriptionJob:
                 failed += 1
             else:
                 self.db.update_status(record_id, TranscribeStatus.STARTED_TRANSCRIBE.value)
-                self.db.save_draft(record_id, draft, TranscribeStatus.FINISHED_TRANSCRIBE.value)
+                self.db.save_transcription(record_id, transcription, TranscribeStatus.FINISHED_TRANSCRIBE.value)
                 completed += 1
 
             logger.info(f"Progress: {completed + failed}/{total} ({completed} ok, {failed} failed)")
@@ -563,7 +689,7 @@ Examples:
     run_parser.add_argument('--lang', default='RUS', help='Language filter (default: RUS)')
     run_parser.add_argument('--workers', type=int, default=4, help='Number of parallel workers')
     run_parser.add_argument('--engine', choices=['whisper', 'faster-whisper'], help='Transcription engine')
-    run_parser.add_argument('--model', help='Model name (e.g., medium, large-v3)')
+    run_parser.add_argument('--model', help='Model name (e.g., medium, large-v3-turbo)')
     run_parser.add_argument('--device', choices=['cuda', 'cpu'], help='Device to use')
     run_parser.set_defaults(func=cmd_run)
 
