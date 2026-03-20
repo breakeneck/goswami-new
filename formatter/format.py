@@ -309,6 +309,8 @@ class ProgressTracker:
         self.processed_duration = 0.0
         self.failed_count = 0
         self.start_time = time()
+        self.lecture_start_time: Optional[float] = None
+        self.last_lecture_time: Optional[float] = None
 
     def update(self, duration: float):
         """Оновити прогрес після успішної обробки лекції"""
@@ -318,6 +320,15 @@ class ProgressTracker:
     def update_failed(self):
         """Оновити лічильник невдалих спроб"""
         self.failed_count += 1
+
+    def start_lecture(self):
+        """Записати час початку обробки лекції"""
+        self.lecture_start_time = time()
+
+    def end_lecture(self):
+        """Записати час завершення обробки лекції"""
+        if self.lecture_start_time is not None:
+            self.last_lecture_time = time() - self.lecture_start_time
 
     @property
     def elapsed_seconds(self) -> float:
@@ -340,22 +351,6 @@ class ProgressTracker:
         if self.total_duration == 0:
             return 0.0
         return (self.processed_duration / self.total_duration) * 100
-
-    @property
-    def speed_lectures_per_hour(self) -> float:
-        """Швидкість: лекцій за годину"""
-        elapsed_h = self.elapsed_seconds / 3600
-        if elapsed_h == 0:
-            return 0.0
-        return self.processed_count / elapsed_h
-
-    @property
-    def speed_hours_per_hour(self) -> float:
-        """Швидкість: годин аудіо за годину реального часу"""
-        elapsed_h = self.elapsed_seconds / 3600
-        if elapsed_h == 0:
-            return 0.0
-        return (self.processed_duration / 3600) / elapsed_h
 
     def get_eta(self) -> Optional[timedelta]:
         """Розрахувати ETA на основі тривалості (більш точний)"""
@@ -383,20 +378,19 @@ class ProgressTracker:
         bar = self._make_bar(pct)
         
         eta_str = f"~{eta}" if eta else "обчислення..."
-        speed_lp = self.speed_lectures_per_hour
-        speed_hp = self.speed_hours_per_hour
         
         processed_dur_str = timedelta(seconds=int(self.processed_duration))
         total_dur_str = timedelta(seconds=int(self.total_duration))
+        
+        last_time_str = str(timedelta(seconds=int(self.last_lecture_time))) if self.last_lecture_time else "—"
         
         lines = [
             f"┌{'─'*78}┐",
             f"│ Прогрес: {self.processed_count}/{self.total_count} лекцій (невдач: {self.failed_count}){' '*(78 - 52 - len(str(self.processed_count)) - len(str(self.total_count)) - len(str(self.failed_count)))}│",
             f"│ [{bar}] {pct:5.2f}%{' '*(78 - 52 - 6)}│",
             f"│ Тривалість: {processed_dur_str} / {total_dur_str}{' '*(78 - 30 - len(str(processed_dur_str)) - len(str(total_dur_str)))}│",
-            f"│ Швидкість: x{speed_hp:.2f} (годин аудіо за годину){' '*(78 - 38 - len(f'{speed_hp:.2f}'))}│",
-            f"│ Поточна:   #{current_id} {current_title}{' '*(78 - 14 - len(str(current_id)) - len(current_title))}│",
-            f"│ Пройшло:   {self.elapsed}  |  Залишилось: {eta_str}{' '*(78 - 40 - len(str(self.elapsed)) - len(eta_str))}│",
+            f"│ Остання:   #{current_id} {current_title}{' '*(78 - 14 - len(str(current_id)) - len(current_title))}│",
+            f"│ Час лекції: {last_time_str}  |  Пройшло: {self.elapsed}  |  Залишок: {eta_str}{' '*(78 - 52 - len(last_time_str) - len(str(self.elapsed)) - len(eta_str))}│",
             f"└{'─'*78}┘",
         ]
         
@@ -452,8 +446,12 @@ def process_formatting(language: str = 'RUS'):
             
             logger.info(f"[#{media_id}] Форматування: {title} ({duration/60:.1f} хв)")
             
+            tracker.start_lecture()
+            
             # Відправити текст на форматування
             formatted_text = api_client.format_text(text, duration)
+            
+            tracker.end_lecture()
             
             if formatted_text is None:
                 raise Exception("Не вдалося отримати відповідь від API після кількох спроб")
@@ -471,6 +469,7 @@ def process_formatting(language: str = 'RUS'):
             logger.info(f"[#{media_id}] ✓ Успішно сформатовано: {title}")
             
         except Exception as e:
+            tracker.end_lecture()
             tracker.update_failed()
             error_msg = f"{datetime.now()} - Помилка при обробці лекції ID={media_id}, title='{title}'\nПомилка: {str(e)}\n\n"
             
