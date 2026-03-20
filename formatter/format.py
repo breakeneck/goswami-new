@@ -19,7 +19,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import requests
-from time import sleep
+from time import sleep, time
 
 # Load environment variables
 load_dotenv()
@@ -185,21 +185,31 @@ class LMApiClient:
     def __init__(self):
         self.api_url = os.getenv('LM_STUDIO_API_URL', 'http://localhost:1234/v1')
         self.model = os.getenv('LM_STUDIO_MODEL', 'qwen3.5-27b-claude-4.6-os-instruct-i1')
-        self.timeout = int(os.getenv('REQUEST_TIMEOUT', 300))
+        self.base_timeout = int(os.getenv('REQUEST_TIMEOUT', 300))
         self.max_retries = int(os.getenv('MAX_RETRIES', 3))
         self.temperature = float(os.getenv('TEMPERATURE', 0.3))
+        # Timeout multiplier per minute of audio (e.g., 5 means 5 min timeout per 1 min of audio)
+        self.timeout_per_minute = float(os.getenv('TIMEOUT_PER_MINUTE', 5))
 
-    def format_text(self, text: str) -> Optional[str]:
+    def _calculate_timeout(self, duration_seconds: float) -> int:
+        """Розрахувати динамічний timeout на основі тривалості лекції"""
+        duration_minutes = duration_seconds / 60
+        dynamic_timeout = int(duration_minutes * self.timeout_per_minute)
+        return max(self.base_timeout, dynamic_timeout)
+
+    def format_text(self, text: str, duration_seconds: float = 0.0) -> Optional[str]:
         """
-        Відправити текст на форматування через LM Studio API
+        Відправити текст на форматування через LM Studio API (streaming mode)
         
         Args:
             text: Текст для форматування
+            duration_seconds: Тривалість лекції в секундах (для динамічного timeout)
             
         Returns:
             Сформатований текст або None у разі помилки
         """
         prompt = self._create_prompt(text)
+        timeout = self._calculate_timeout(duration_seconds)
         
         for attempt in range(self.max_retries):
             try:
@@ -212,14 +222,37 @@ class LMApiClient:
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": self.temperature,
-                        "stream": False
+                        "stream": True
                     },
-                    timeout=self.timeout
+                    timeout=timeout,
+                    stream=True
                 )
                 
                 if response.status_code == 200:
-                    result = response.json()
-                    return result['choices'][0]['message']['content'].strip()
+                    # Read streaming response
+                    content_parts = []
+                    for line in response.iter_lines(decode_unicode=True):
+                        if line is None:
+                            continue
+                        line = line.strip()
+                        if not line or not line.startswith('data: '):
+                            continue
+                        data_str = line[6:]  # Remove 'data: ' prefix
+                        if data_str == '[DONE]':
+                            break
+                        try:
+                            import json
+                            chunk = json.loads(data_str)
+                            delta = chunk.get('choices', [{}])[0].get('delta', {})
+                            if 'content' in delta:
+                                content_parts.append(delta['content'])
+                        except (json.JSONDecodeError, IndexError, KeyError):
+                            continue
+                    
+                    if content_parts:
+                        return ''.join(content_parts).strip()
+                    else:
+                        logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: empty response from API")
                 else:
                     logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed with status {response.status_code}")
                     
@@ -262,19 +295,34 @@ class LMApiClient:
 # ============================================================================
 
 class ProgressTracker:
-    """Трекер прогресу обробки"""
+    """Трекер прогресу обробки з візуальним індикатором"""
+
+    BAR_WIDTH = 40
 
     def __init__(self, total_count: int, total_duration: float):
         self.total_count = total_count
         self.total_duration = total_duration
         self.processed_count = 0
         self.processed_duration = 0.0
-        self.start_time = datetime.now()
+        self.failed_count = 0
+        self.start_time = time()
 
     def update(self, duration: float):
-        """Оновити прогрес після обробки лекції"""
+        """Оновити прогрес після успішної обробки лекції"""
         self.processed_count += 1
         self.processed_duration += duration
+
+    def update_failed(self):
+        """Оновити лічильник невдалих спроб"""
+        self.failed_count += 1
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time() - self.start_time
+
+    @property
+    def elapsed(self) -> timedelta:
+        return timedelta(seconds=int(self.elapsed_seconds))
 
     @property
     def progress_percent(self) -> float:
@@ -290,30 +338,73 @@ class ProgressTracker:
             return 0.0
         return (self.processed_duration / self.total_duration) * 100
 
-    def get_eta(self) -> timedelta:
-        """Розрахувати очікуваний час завершення"""
-        if self.processed_count == 0:
-            return timedelta(0)
-        
-        elapsed = (datetime.now() - self.start_time).total_seconds()
-        avg_per_lecture = elapsed / self.processed_count
-        remaining = self.total_count - self.processed_count
-        eta_seconds = avg_per_lecture * remaining
-        
-        return timedelta(seconds=eta_seconds)
+    @property
+    def speed_lectures_per_hour(self) -> float:
+        """Швидкість: лекцій за годину"""
+        elapsed_h = self.elapsed_seconds / 3600
+        if elapsed_h == 0:
+            return 0.0
+        return self.processed_count / elapsed_h
 
-    def display(self, current_title: str):
-        """Відобразити поточний прогрес"""
-        elapsed = datetime.now() - self.start_time
-        eta = self.get_eta()
+    @property
+    def speed_hours_per_hour(self) -> float:
+        """Швидкість: годин аудіо за годину реального часу"""
+        elapsed_h = self.elapsed_seconds / 3600
+        if elapsed_h == 0:
+            return 0.0
+        return (self.processed_duration / 3600) / elapsed_h
+
+    def get_eta(self) -> Optional[timedelta]:
+        """Розрахувати ETA на основі тривалості (більш точний)"""
+        if self.processed_duration == 0:
+            return None
         
-        print(f"\n{'='*80}")
-        print(f"Прогрес: {self.processed_count}/{self.total_count} лекцій")
-        print(f"Відсоток: {self.progress_percent:.1f}% (за кількістю) / {self.duration_progress_percent:.1f}% (за тривалістю)")
-        print(f"Поточна лекція: {current_title}")
-        print(f"Час обробки: {elapsed}")
-        print(f"Залишок часу: ~{eta}")
-        print(f"{'='*80}\n")
+        remaining_duration = self.total_duration - self.processed_duration
+        # Швидкість: секунди аудіо за секунду реального часу
+        speed = self.processed_duration / self.elapsed_seconds
+        eta_seconds = remaining_duration / speed
+        
+        return timedelta(seconds=int(eta_seconds))
+
+    def _make_bar(self, percent: float) -> str:
+        """Створити текстовий progress bar"""
+        filled = int(self.BAR_WIDTH * percent / 100)
+        empty = self.BAR_WIDTH - filled
+        bar = '█' * filled + '░' * empty
+        return bar
+
+    def display(self, current_title: str, current_id: int):
+        """Відобразити поточний прогрес"""
+        eta = self.get_eta()
+        pct = self.duration_progress_percent
+        bar = self._make_bar(pct)
+        
+        eta_str = f"~{eta}" if eta else "обчислення..."
+        speed_lp = self.speed_lectures_per_hour
+        speed_hp = self.speed_hours_per_hour
+        
+        processed_dur_str = timedelta(seconds=int(self.processed_duration))
+        total_dur_str = timedelta(seconds=int(self.total_duration))
+        
+        lines = [
+            f"┌{'─'*78}┐",
+            f"│ Прогрес: {self.processed_count}/{self.total_count} лекцій (невдач: {self.failed_count}){' '*(78 - 52 - len(str(self.processed_count)) - len(str(self.total_count)) - len(str(self.failed_count)))}│",
+            f"│ [{bar}] {pct:5.1f}%{' '*(78 - 52 - 6)}│",
+            f"│ Тривалість: {processed_dur_str} / {total_dur_str}{' '*(78 - 30 - len(str(processed_dur_str)) - len(str(total_dur_str)))}│",
+            f"│ Швидкість: {speed_lp:.1f} лекцій/год | x{speed_hp:.2f} годин аудіо/год{' '*(78 - 50 - len(f'{speed_lp:.1f}') - len(f'{speed_hp:.2f}'))}│",
+            f"│ Поточна:   #{current_id} {current_title}{' '*(78 - 14 - len(str(current_id)) - len(current_title))}│",
+            f"│ Пройшло:   {self.elapsed}  |  Залишилось: {eta_str}{' '*(78 - 40 - len(str(self.elapsed)) - len(eta_str))}│",
+            f"└{'─'*78}┘",
+        ]
+        
+        # Ensure all lines are exactly 80 chars wide
+        for i, line in enumerate(lines):
+            if len(line) < 80:
+                lines[i] = line[:-1] + ' ' * (80 - len(line)) + '│'
+            elif len(line) > 80:
+                lines[i] = line[:79] + '│'
+        
+        print('\n' + '\n'.join(lines) + '\n')
 
 
 # ============================================================================
@@ -346,40 +437,44 @@ def process_formatting(language: str = 'RUS'):
     logger.info(f"Загальна тривалість: {timedelta(seconds=total_duration)}")
     
     for media in media_list:
+        media_id = media['id']
+        title = media['title']
+        duration = float(media['duration'].total_seconds()) if media['duration'] else 0.0
+        
         try:
             # Оновити статус на "started_formatting"
-            db.update_status(media['id'], FormatStatus.STARTED_FORMATTING.value)
+            db.update_status(media_id, FormatStatus.STARTED_FORMATTING.value)
             
             text = media['transcribe_txt']
-            duration = float(media['duration'].total_seconds()) if media['duration'] else 0.0
             
-            logger.info(f"Форматування: {media['title']} ({duration/60:.1f} хв)")
+            logger.info(f"[#{media_id}] Форматування: {title} ({duration/60:.1f} хв)")
             
             # Відправити текст на форматування
-            formatted_text = api_client.format_text(text)
+            formatted_text = api_client.format_text(text, duration)
             
             if formatted_text is None:
                 raise Exception("Не вдалося отримати відповідь від API після кількох спроб")
             
             # Зберегти результат у draft
-            db.save_draft(media['id'], formatted_text)
+            db.save_draft(media_id, formatted_text)
             
             # Оновити статус на "finished_formatting"
-            db.update_status(media['id'], FormatStatus.FINISHED_FORMATTING.value)
+            db.update_status(media_id, FormatStatus.FINISHED_FORMATTING.value)
             
             # Оновити трекер прогресу
             tracker.update(duration)
-            tracker.display(media['title'])
+            tracker.display(title, media_id)
             
-            logger.info(f"Успішно сформатовано: {media['title']}")
+            logger.info(f"[#{media_id}] ✓ Успішно сформатовано: {title}")
             
         except Exception as e:
-            error_msg = f"{datetime.now()} - Помилка при обробці лекції ID={media['id']}, title='{media['title']}'\nПомилка: {str(e)}\n\n"
+            tracker.update_failed()
+            error_msg = f"{datetime.now()} - Помилка при обробці лекції ID={media_id}, title='{title}'\nПомилка: {str(e)}\n\n"
             
             with open(error_file, 'a', encoding='utf-8') as f:
                 f.write(error_msg)
             
-            logger.error(f"Помилка при обробці лекції ID={media['id']}: {e}")
+            logger.error(f"[#{media_id}] ✗ Помилка: {e}")
 
 
 def list_media_for_formatting(language: str = 'RUS'):
