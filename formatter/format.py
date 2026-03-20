@@ -392,7 +392,7 @@ class ProgressTracker:
         lines = [
             f"┌{'─'*78}┐",
             f"│ Прогрес: {self.processed_count}/{self.total_count} лекцій (невдач: {self.failed_count}){' '*(78 - 52 - len(str(self.processed_count)) - len(str(self.total_count)) - len(str(self.failed_count)))}│",
-            f"│ [{bar}] {pct:5.1f}%{' '*(78 - 52 - 6)}│",
+            f"│ [{bar}] {pct:5.2f}%{' '*(78 - 52 - 6)}│",
             f"│ Тривалість: {processed_dur_str} / {total_dur_str}{' '*(78 - 30 - len(str(processed_dur_str)) - len(str(total_dur_str)))}│",
             f"│ Швидкість: {speed_lp:.1f} лекцій/год | x{speed_hp:.2f} годин аудіо/год{' '*(78 - 50 - len(f'{speed_lp:.1f}') - len(f'{speed_hp:.2f}'))}│",
             f"│ Поточна:   #{current_id} {current_title}{' '*(78 - 14 - len(str(current_id)) - len(current_title))}│",
