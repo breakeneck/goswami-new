@@ -76,6 +76,7 @@ class Database:
                       AND transcribe_txt != ''
                       AND (transcribe_status IS NULL 
                            OR transcribe_status = 'finished_transcribe')
+                      AND draft IS NULL
                     ORDER BY occurrence_date DESC
                 """, (language,))
                 return [dict(row) for row in cur.fetchall()]
