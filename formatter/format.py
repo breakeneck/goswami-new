@@ -230,6 +230,8 @@ class LMApiClient:
                 )
                 
                 if response.status_code == 200:
+                    # Explicitly set UTF-8 encoding to avoid mojibake
+                    response.encoding = 'utf-8'
                     # Read streaming response
                     content_parts = []
                     for line in response.iter_lines(decode_unicode=True):
