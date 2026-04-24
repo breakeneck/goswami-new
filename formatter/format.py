@@ -245,6 +245,41 @@ class Database:
                 )
                 conn.commit()
 
+    def get_failed_for_formatting(self, language: str = 'RUS') -> List[dict]:
+        """Отримати список медіа з статусом 'started_formatting' (невдалі спроби)"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, title, file_url, occurrence_date, language, 
+                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, duration
+                    FROM media
+                    WHERE type = 'audio'
+                      AND language = %s
+                      AND file_url IS NOT NULL
+                      AND file_url != ''
+                      AND transcribe_lrc IS NOT NULL
+                      AND transcribe_lrc != ''
+                      AND transcribe_status = 'started_formatting'
+                      AND draft IS NULL
+                    ORDER BY occurrence_date DESC
+                """, (language,))
+                return [dict(row) for row in cur.fetchall()]
+
+    def reset_failed_statuses(self, language: str = 'RUS') -> int:
+        """Скинути статус 'started_formatting' на 'finished_transcribe' для повторних спроб"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE media 
+                    SET transcribe_status = 'finished_transcribe'
+                    WHERE type = 'audio'
+                      AND language = %s
+                      AND transcribe_status = 'started_formatting'
+                      AND draft IS NULL
+                """, (language,))
+                conn.commit()
+                return cur.rowcount
+
 
 # ============================================================================
 # LM Studio API Client
@@ -323,7 +358,11 @@ class LMApiClient:
                             continue
                     
                     if content_parts:
-                        return ''.join(content_parts).strip()
+                        # Filter out None values that might appear
+                        clean_parts = [p for p in content_parts if p is not None]
+                        if clean_parts:
+                            return ''.join(clean_parts).strip()
+                        logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: no valid content in response")
                     else:
                         logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: empty response from API")
                 else:
@@ -641,6 +680,14 @@ def main():
     status_parser = subparsers.add_parser('status', help='Показати статус форматування')
     status_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
     
+    # Команда reset-failed
+    reset_parser = subparsers.add_parser('reset-failed', help='Скинути статуси невдавшихся лекцій для повтору')
+    reset_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
+    
+    # Команда retry-failed
+    retry_parser = subparsers.add_parser('retry-failed', help='Повторити форматування для невдавшихся лекцій')
+    retry_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
+    
     args = parser.parse_args()
     
     if args.command == 'run':
@@ -649,6 +696,15 @@ def main():
         list_media_for_formatting(language=args.lang)
     elif args.command == 'status':
         show_status(language=args.lang)
+    elif args.command == 'reset-failed':
+        db = Database()
+        count = db.reset_failed_statuses(language=args.lang)
+        logger.info(f"Скинуто {count} невдалих лекцій для повтору (мова: {args.lang})")
+    elif args.command == 'retry-failed':
+        db = Database()
+        count = db.reset_failed_statuses(language=args.lang)
+        logger.info(f"Скинуто {count} невдалих лекцій. Запуск форматування...")
+        process_formatting(language=args.lang)
     else:
         parser.print_help()
 
