@@ -1,2 +1,2 @@
 source venv/bin/activate
-python format.py --lang=RUS --text
+python format.py run --lang=RUS --text
