@@ -315,6 +315,12 @@ class LMApiClient:
             Сформатований текст у LRC форматі або None у разі помилки
         """
         prompt = self._create_prompt(text)
+        
+        # DEBUG: Log first few lines of input text
+        logger.debug(f"DEBUG: Input text length: {len(text)} chars")
+        first_lines = text.split('\n')[:5]
+        logger.debug(f"DEBUG: First 5 lines of input:\n" + '\n'.join(first_lines))
+        
         timeout = self._calculate_timeout(duration_seconds)
         
         for attempt in range(self.max_retries):
@@ -339,11 +345,16 @@ class LMApiClient:
                     response.encoding = 'utf-8'
                     # Read streaming response
                     content_parts = []
+                    raw_chunks = []  # DEBUG: Store raw chunks for debugging
                     for line in response.iter_lines(decode_unicode=True):
                         if line is None:
                             continue
                         line = line.strip()
-                        if not line or not line.startswith('data: '):
+                        if not line:
+                            continue
+                        if not line.startswith('data: '):
+                            # DEBUG: Log non-data lines
+                            logger.debug(f"DEBUG: Non-data line: {line[:100]}")
                             continue
                         data_str = line[6:]  # Remove 'data: ' prefix
                         if data_str == '[DONE]':
@@ -351,11 +362,21 @@ class LMApiClient:
                         try:
                             import json
                             chunk = json.loads(data_str)
+                            raw_chunks.append(str(chunk)[:200])  # DEBUG: Store first 200 chars
                             delta = chunk.get('choices', [{}])[0].get('delta', {})
                             if 'content' in delta:
                                 content_parts.append(delta['content'])
-                        except (json.JSONDecodeError, IndexError, KeyError):
+                        except (json.JSONDecodeError, IndexError, KeyError) as e:
+                            logger.debug(f"DEBUG: Failed to parse chunk: {e}")
                             continue
+                    
+                    # DEBUG: Log content parts info
+                    if content_parts:
+                        logger.debug(f"DEBUG: content_parts count: {len(content_parts)}")
+                        logger.debug(f"DEBUG: content_parts types: {[type(p) for p in content_parts[:10]]}")
+                        none_count = sum(1 for p in content_parts if p is None)
+                        if none_count > 0:
+                            logger.warning(f"DEBUG: Found {none_count} None values in content_parts")
                     
                     if content_parts:
                         # Filter out None values that might appear
