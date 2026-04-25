@@ -3,9 +3,16 @@
 Formatter CLI - Форматування транскриптів лекцій з використанням LM Studio API.
 
 Використання:
-    python format.py run [--lang=RUS]
+    python format.py run [--lang=RUS] [--lrc|--text|--all]
     python format.py list [--lang=RUS]
-    python format.py status
+    python format.py status [--lang=RUS]
+    python format.py retry-failed [--lang=RUS] [--lrc|--text|--all]
+    python format.py reset-failed [--lang=RUS]
+
+Опції збереження:
+    --all   Зберігати в обидва поля (draft_lrc і draft) - ЗА ЗАМОВЧУВАННЯМ
+    --lrc   Зберігати тільки в draft_lrc (з таймкодами)
+    --text  Зберігати тільки в draft (без таймкодів)
 """
 
 import os
@@ -556,8 +563,16 @@ class ProgressTracker:
 # Main Processing Logic
 # ============================================================================
 
-def process_formatting(language: str = 'RUS'):
-    """Основний процес форматування"""
+def process_formatting(language: str = 'RUS', save_mode: str = 'all'):
+    """Основний процес форматування
+    
+    Args:
+        language: Мова лекцій (RUS або ENG)
+        save_mode: Режим збереження ('all', 'lrc', 'text')
+            - 'all': зберегти в обидва поля (draft_lrc і draft)
+            - 'lrc': зберегти тільки в draft_lrc (з таймкодами)
+            - 'text': зберегти тільки в draft (без таймкодів)
+    """
     db = Database()
     api_client = LMApiClient()
     
@@ -607,8 +622,13 @@ def process_formatting(language: str = 'RUS'):
             # Extract plain text from formatted LRC
             plain_text = lrc_to_plain_text(formatted_lrc)
             
-            # Save both formats
-            db.save_drafts(media_id, formatted_lrc, plain_text)
+            # Save based on save_mode
+            if save_mode == 'all':
+                db.save_drafts(media_id, formatted_lrc, plain_text)
+            elif save_mode == 'lrc':
+                db.save_draft_lrc(media_id, formatted_lrc)
+            elif save_mode == 'text':
+                db.save_draft(media_id, plain_text)
             
             # Оновити статус на "finished_formatting"
             db.update_status(media_id, FormatStatus.FINISHED_FORMATTING.value)
@@ -692,6 +712,9 @@ def main():
     # Команда run
     run_parser = subparsers.add_parser('run', help='Запустити процес форматування')
     run_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
+    run_parser.add_argument('--lrc', action='store_true', help='Зберігати у draft_lrc (з таймкодами)')
+    run_parser.add_argument('--text', action='store_true', help='Зберігати у draft (без таймкодів)')
+    run_parser.add_argument('--all', action='store_true', help='Зберігати в обидва поля (draft_lrc і draft)')
     
     # Команда list
     list_parser = subparsers.add_parser('list', help='Відобразити список лекцій для форматування')
@@ -708,11 +731,28 @@ def main():
     # Команда retry-failed
     retry_parser = subparsers.add_parser('retry-failed', help='Повторити форматування для невдавшихся лекцій')
     retry_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
+    retry_parser.add_argument('--lrc', action='store_true', help='Зберігати у draft_lrc (з таймкодами)')
+    retry_parser.add_argument('--text', action='store_true', help='Зберігати у draft (без таймкодів)')
+    retry_parser.add_argument('--all', action='store_true', help='Зберігати в обидва поля (draft_lrc і draft)')
     
     args = parser.parse_args()
     
+    # Determine save mode: default to --all if nothing specified
+    if args.command in ('run', 'retry-failed'):
+        if args.all or (not args.lrc and not args.text):
+            # Default: save both
+            save_mode = 'all'
+        elif args.lrc:
+            save_mode = 'lrc'
+        elif args.text:
+            save_mode = 'text'
+        else:
+            save_mode = 'all'
+    else:
+        save_mode = 'all'
+    
     if args.command == 'run':
-        process_formatting(language=args.lang)
+        process_formatting(language=args.lang, save_mode=save_mode)
     elif args.command == 'list':
         list_media_for_formatting(language=args.lang)
     elif args.command == 'status':
@@ -725,7 +765,7 @@ def main():
         db = Database()
         count = db.reset_failed_statuses(language=args.lang)
         logger.info(f"Скинуто {count} невдалих лекцій. Запуск форматування...")
-        process_formatting(language=args.lang)
+        process_formatting(language=args.lang, save_mode=save_mode)
     else:
         parser.print_help()
 
