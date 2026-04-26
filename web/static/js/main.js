@@ -246,7 +246,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const transcribeContent = document.getElementById('transcribeContent');
     
     if (transcribeToggle && transcribeContent) {
+        console.log('Transcribe toggle found, attaching event listener');
         transcribeToggle.addEventListener('click', function() {
+            console.log('Transcribe toggle clicked');
             const isExpanded = transcribeContent.classList.contains('expanded');
             
             if (isExpanded) {
@@ -269,6 +271,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
             }
         });
+    } else {
+        console.log('Transcribe elements not found:', { toggle: transcribeToggle, content: transcribeContent });
     }
 });
 
