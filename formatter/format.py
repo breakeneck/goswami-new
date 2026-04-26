@@ -138,6 +138,26 @@ class Database:
                 """, (language,))
                 return [dict(row) for row in cur.fetchall()]
 
+    def get_media_by_id(self, media_id: int) -> Optional[dict]:
+        """Отримати одну лекцію за ID (для тестування)"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, title, file_url, occurrence_date, language,
+                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, duration
+                    FROM media
+                    WHERE id = %s
+                      AND type = 'audio'
+                      AND file_url IS NOT NULL
+                      AND file_url != ''
+                      AND transcribe_lrc IS NOT NULL
+                      AND transcribe_lrc != ''
+                """, (media_id,))
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+                return None
+
     def get_all_media_status(self, language: Optional[str] = None) -> List[dict]:
         """Отримати всі записи з статусом"""
         with self.get_connection() as conn:
@@ -386,11 +406,15 @@ class LMApiClient:
                             logger.warning(f"DEBUG: Found {none_count} None values in content_parts")
                     
                     if content_parts:
-                        # Filter out None values that might appear
-                        clean_parts = [p for p in content_parts if p is not None]
+                        # Filter out None values and empty strings
+                        clean_parts = [p for p in content_parts if p is not None and p.strip()]
                         if clean_parts:
-                            return ''.join(clean_parts).strip()
-                        logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: no valid content in response")
+                            result = ''.join(clean_parts).strip()
+                            if result:
+                                return result
+                            logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: response content is empty after joining")
+                        else:
+                            logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: no valid content in response (all None or empty)")
                     else:
                         logger.warning(f"Attempt {attempt + 1}/{self.max_retries}: empty response from API")
                 else:
@@ -563,7 +587,7 @@ class ProgressTracker:
 # Main Processing Logic
 # ============================================================================
 
-def process_formatting(language: str = 'RUS', save_mode: str = 'all'):
+def process_formatting(language: str = 'RUS', save_mode: str = 'all', media_id: int = None):
     """Основний процес форматування
     
     Args:
@@ -572,12 +596,20 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all'):
             - 'all': зберегти в обидва поля (draft_lrc і draft)
             - 'lrc': зберегти тільки в draft_lrc (з таймкодами)
             - 'text': зберегти тільки в draft (без таймкодів)
+        media_id: Якщо вказано, форматувати тільки цю лекцію
     """
     db = Database()
     api_client = LMApiClient()
     
     # Отримати список медіа для обробки
-    media_list = db.get_media_for_formatting(language)
+    if media_id is not None:
+        media_item = db.get_media_by_id(media_id)
+        if media_item is None:
+            logger.info(f"Лекція з ID={media_id} не знайдена або не має transcribe_lrc")
+            return
+        media_list = [media_item]
+    else:
+        media_list = db.get_media_for_formatting(language)
     
     if not media_list:
         logger.info(f"Не знайдено лекцій для форматування (мова: {language})")
@@ -616,19 +648,24 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all'):
             
             tracker.end_lecture()
             
-            if formatted_lrc is None:
+            if formatted_lrc is None or not formatted_lrc.strip():
                 raise Exception("Не вдалося отримати відповідь від API після кількох спроб")
             
             # Extract plain text from formatted LRC
             plain_text = lrc_to_plain_text(formatted_lrc)
             
+            logger.info(f"[#{media_id}] Збереження: formatted_lrc={len(formatted_lrc)} символів, plain_text={len(plain_text)} символів")
+            
             # Save based on save_mode
             if save_mode == 'all':
                 db.save_drafts(media_id, formatted_lrc, plain_text)
+                logger.info(f"[#{media_id}] ✓ Збережено в draft_lrc і draft")
             elif save_mode == 'lrc':
                 db.save_draft_lrc(media_id, formatted_lrc)
+                logger.info(f"[#{media_id}] ✓ Збережено в draft_lrc")
             elif save_mode == 'text':
                 db.save_draft(media_id, plain_text)
+                logger.info(f"[#{media_id}] ✓ Збережено в draft")
             
             # Оновити статус на "finished_formatting"
             db.update_status(media_id, FormatStatus.FINISHED_FORMATTING.value)
@@ -712,6 +749,7 @@ def main():
     # Команда run
     run_parser = subparsers.add_parser('run', help='Запустити процес форматування')
     run_parser.add_argument('--lang', default='RUS', help='Мова лекцій (RUS або ENG)')
+    run_parser.add_argument('--id', type=int, default=None, help='Форматувати тільки лекцію з цією ID')
     run_parser.add_argument('--lrc', action='store_true', help='Зберігати у draft_lrc (з таймкодами)')
     run_parser.add_argument('--text', action='store_true', help='Зберігати у draft (без таймкодів)')
     run_parser.add_argument('--all', action='store_true', help='Зберігати в обидва поля (draft_lrc і draft)')
@@ -752,7 +790,7 @@ def main():
         save_mode = 'all'
     
     if args.command == 'run':
-        process_formatting(language=args.lang, save_mode=save_mode)
+        process_formatting(language=args.lang, save_mode=save_mode, media_id=args.id)
     elif args.command == 'list':
         list_media_for_formatting(language=args.lang)
     elif args.command == 'status':
