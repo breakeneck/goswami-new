@@ -1319,6 +1319,89 @@ img {
     text-decoration: none;
 }
 
+/* Transcribe Section */
+.transcribe-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e4e4e4;
+}
+
+.transcribe-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: #fff;
+    border: 1px solid #e4e4e4;
+    color: #2b2b2b;
+    border-radius: 25px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.transcribe-toggle:hover {
+    background: #23ada8;
+    border-color: #23ada8;
+    color: #fff;
+}
+
+.transcribe-toggle svg {
+    transition: transform 0.3s ease;
+}
+
+.transcribe-toggle.expanded svg {
+    transform: rotate(180deg);
+}
+
+.transcribe-content {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.3s ease, padding 0.3s ease;
+    padding-top: 0;
+}
+
+.transcribe-content.expanded {
+    max-height: 2000px;
+    opacity: 1;
+    padding-top: 20px;
+}
+
+.transcribe-draft,
+.transcribe-final {
+    margin-bottom: 30px;
+}
+
+.transcribe-draft h4,
+.transcribe-final h4 {
+    font-size: 18px;
+    color: #2b2b2b;
+    margin-bottom: 12px;
+    font-weight: 700;
+}
+
+.transcribe-draft {
+    background: rgba(255, 160, 0, 0.05);
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #ffa000;
+}
+
+.transcribe-final {
+    background: rgba(35, 173, 168, 0.05);
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #23ada8;
+}
+
+.transcribe-text {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #4c5451;
+    white-space: pre-wrap;
+}
+
 @media only screen and (max-width: 768px) {
     .lecture-detail-header {
         flex-direction: column;

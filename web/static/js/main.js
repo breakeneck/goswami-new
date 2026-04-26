@@ -240,6 +240,36 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 500);
         });
     });
+    
+    // Transcribe toggle functionality
+    const transcribeToggle = document.getElementById('transcribeToggle');
+    const transcribeContent = document.getElementById('transcribeContent');
+    
+    if (transcribeToggle && transcribeContent) {
+        transcribeToggle.addEventListener('click', function() {
+            const isExpanded = transcribeContent.classList.contains('expanded');
+            
+            if (isExpanded) {
+                transcribeContent.classList.remove('expanded');
+                transcribeToggle.classList.remove('expanded');
+                transcribeToggle.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 5L8 10L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Показати транскрипцію
+                `;
+            } else {
+                transcribeContent.classList.add('expanded');
+                transcribeToggle.classList.add('expanded');
+                transcribeToggle.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 5L8 10L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Приховати транскрипцію
+                `;
+            }
+        });
+    }
 });
 
 // Utility function to format duration

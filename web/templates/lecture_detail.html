@@ -59,6 +59,31 @@
     </div>
     {% endif %}
     
+    {% if lecture.draft or lecture.transcribe_txt %}
+    <div class="transcribe-section">
+        <button type="button" class="transcribe-toggle" id="transcribeToggle">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 5L8 10L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Показати транскрипцію
+        </button>
+        <div class="transcribe-content" id="transcribeContent" style="display: none;">
+            {% if lecture.draft %}
+            <div class="transcribe-draft">
+                <h4>Чернетка</h4>
+                <div class="transcribe-text">{{ lecture.draft|linebreaks }}</div>
+            </div>
+            {% endif %}
+            {% if lecture.transcribe_txt %}
+            <div class="transcribe-final">
+                <h4>Транскрипція</h4>
+                <div class="transcribe-text">{{ lecture.transcribe_txt|linebreaks }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
     <div class="lecture-actions">
         <a href="/" class="btn-back">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
