@@ -1372,6 +1372,10 @@ img {
 .transcribe-final {
     margin-bottom: 30px;
     padding-top: 20px;
+    background: rgba(35, 173, 168, 0.03);
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #23ada8;
 }
 
 .transcribe-draft h4,
@@ -1380,20 +1384,6 @@ img {
     color: #2b2b2b;
     margin-bottom: 12px;
     font-weight: 700;
-}
-
-.transcribe-draft {
-    background: rgba(255, 160, 0, 0.05);
-    padding: 20px;
-    border-radius: 10px;
-    border-left: 4px solid #ffa000;
-}
-
-.transcribe-final {
-    background: rgba(35, 173, 168, 0.05);
-    padding: 20px;
-    border-radius: 10px;
-    border-left: 4px solid #23ada8;
 }
 
 .transcribe-text {
