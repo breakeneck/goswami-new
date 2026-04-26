@@ -241,70 +241,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Transcribe toggle functionality
-    const transcribeToggle = document.getElementById('transcribeToggle');
-    const transcribeContent = document.getElementById('transcribeContent');
-    
-    if (transcribeToggle && transcribeContent) {
-        console.log('Transcribe toggle found, attaching event listener');
-        transcribeToggle.addEventListener('click', function() {
-            console.log('Transcribe toggle clicked');
-            const isExpanded = transcribeContent.classList.contains('expanded');
-            
-            if (isExpanded) {
-                transcribeContent.classList.remove('expanded');
-                transcribeToggle.classList.remove('expanded');
-                transcribeToggle.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 5L8 10L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Показати транскрипцію
-                `;
-            } else {
-                transcribeContent.classList.add('expanded');
-                transcribeToggle.classList.add('expanded');
-                transcribeToggle.innerHTML = `
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 5L8 10L13 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Приховати транскрипцію
-                `;
-            }
-        });
-    } else {
-        console.log('Transcribe elements not found:', { toggle: transcribeToggle, content: transcribeContent });
+    // Utility function to format duration
+    function formatDuration(seconds) {
+        if (!seconds) return '';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
     }
-});
-
-// Utility function to format duration
-function formatDuration(seconds) {
-    if (!seconds) return '';
     
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    if (hours > 0) {
-        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
-
-// Utility function to debounce function calls
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
+    // Utility function to debounce function calls
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
             clearTimeout(timeout);
-            func(...args);
+            timeout = setTimeout(later, wait);
         };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
+    }
+    
+    // Export for use in other scripts
+    window.GoswamiUtils = {
+        formatDuration,
+        debounce
     };
-}
-
-// Export for use in other scripts
-window.GoswamiUtils = {
-    formatDuration,
-    debounce
-};
+});

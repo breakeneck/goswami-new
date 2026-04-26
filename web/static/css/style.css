@@ -1326,52 +1326,9 @@ img {
     border-top: 1px solid #e4e4e4;
 }
 
-.transcribe-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: #fff;
-    border: 1px solid #e4e4e4;
-    color: #2b2b2b;
-    border-radius: 25px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.transcribe-toggle:hover {
-    background: #23ada8;
-    border-color: #23ada8;
-    color: #fff;
-}
-
-.transcribe-toggle svg {
-    transition: transform 0.3s ease;
-}
-
-.transcribe-toggle.expanded svg {
-    transform: rotate(180deg);
-}
-
-.transcribe-content {
-    overflow: hidden;
-    max-height: 0;
-    opacity: 0;
-    visibility: hidden;
-    transition: max-height 0.4s ease, opacity 0.3s ease, visibility 0.3s ease;
-}
-
-.transcribe-content.expanded {
-    max-height: 2000px;
-    opacity: 1;
-    visibility: visible;
-}
-
 .transcribe-draft,
 .transcribe-final {
     margin-bottom: 30px;
-    padding-top: 20px;
     background: rgba(35, 173, 168, 0.03);
     padding: 20px;
     border-radius: 10px;
