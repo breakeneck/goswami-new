@@ -20,7 +20,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'lectures',
-    'goswami.auth',
 ]
 
 MIDDLEWARE = [
