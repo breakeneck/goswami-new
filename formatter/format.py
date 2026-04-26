@@ -532,6 +532,7 @@ class ProgressTracker:
         self.start_time = time()
         self.lecture_start_time: Optional[float] = None
         self.last_lecture_time: Optional[float] = None
+        self._last_duration: float = 0.0
 
     def update(self, duration: float):
         """Оновити прогрес після успішної обробки лекції"""
@@ -606,13 +607,28 @@ class ProgressTracker:
         
         last_time_str = str(timedelta(seconds=int(self.last_lecture_time))) if self.last_lecture_time else "—"
         
+        # Розрахунок швидкості: скільки секунд аудіо обробується за 1 секунду реального часу
+        if self.last_lecture_time and self.last_lecture_time > 0:
+            current_lecture_duration = self.processed_duration - (self.processed_duration - (self.last_lecture_time if self.processed_count <= 1 else 0))
+            speed = self.processed_duration / self.elapsed_seconds if self.elapsed_seconds > 0 else 0
+            speed_str = f"{speed:.1f}x"
+        else:
+            speed_str = "—"
+        
+        # Розрахунок швидкості для поточної лекції
+        lecture_speed = 0
+        if self.last_lecture_time and self.last_lecture_time > 0 and hasattr(self, '_last_duration') and self._last_duration > 0:
+            lecture_speed = self._last_duration / self.last_lecture_time
+        speed_str = f"{lecture_speed:.1f}x" if lecture_speed > 0 else "—"
+        
         lines = [
             f"┌{'─'*78}┐",
             f"│ Прогрес: {self.processed_count}/{self.total_count} лекцій (невдач: {self.failed_count}){' '*(78 - 52 - len(str(self.processed_count)) - len(str(self.total_count)) - len(str(self.failed_count)))}│",
             f"│ [{bar}] {pct:5.2f}%{' '*(78 - 52 - 6)}│",
             f"│ Тривалість: {processed_dur_str} / {total_dur_str}{' '*(78 - 30 - len(str(processed_dur_str)) - len(str(total_dur_str)))}│",
+            f"│ Швидкість: {speed_str} | Час лекції: {last_time_str}{' '*(78 - 40 - len(speed_str) - len(last_time_str))}│",
             f"│ Остання:   #{current_id} {current_title}{' '*(78 - 14 - len(str(current_id)) - len(current_title))}│",
-            f"│ Час лекції: {last_time_str}  |  Пройшло: {self.elapsed}  |  Залишок: {eta_str}{' '*(78 - 52 - len(last_time_str) - len(str(self.elapsed)) - len(eta_str))}│",
+            f"│ Пройшло: {self.elapsed}  |  Залишок: {eta_str}{' '*(78 - 35 - len(str(self.elapsed)) - len(eta_str))}│",
             f"└{'─'*78}┘",
         ]
         
@@ -700,6 +716,13 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all', media_id: 
             
             if formatted_text is None or not formatted_text.strip():
                 raise Exception("Не вдалося отримати відповідь від API після кількох спроб")
+            
+            # Розрахунок швидкості для цієї лекції
+            lecture_speed = duration / tracker.last_lecture_time if tracker.last_lecture_time and tracker.last_lecture_time > 0 else 0
+            speed_str = f"{lecture_speed:.1f}x"
+            
+            logger.info(f"[#{media_id}] Швидкість: {speed_str} ({duration/60:.1f} хв за {tracker.last_lecture_time:.0f} сек)")
+            tracker._last_duration = duration
             
             # При save_mode='text' результат вже без таймкодів, інакше потрібно витягнути plain text
             if save_mode == 'text':
