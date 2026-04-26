@@ -123,7 +123,7 @@ class Database:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, title, file_url, occurrence_date, language, 
-                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, duration
+                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, transcribe_txt, duration
                     FROM media
                     WHERE type = 'audio'
                       AND language = %s
@@ -144,7 +144,7 @@ class Database:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, title, file_url, occurrence_date, language,
-                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, duration
+                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, transcribe_txt, duration
                     FROM media
                     WHERE id = %s
                       AND type = 'audio'
@@ -278,7 +278,7 @@ class Database:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, title, file_url, occurrence_date, language, 
-                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, duration
+                           transcribe_status, draft, draft_lrc, text, transcribe_lrc, transcribe_txt, duration
                     FROM media
                     WHERE type = 'audio'
                       AND language = %s
@@ -330,18 +330,19 @@ class LMApiClient:
         dynamic_timeout = int(duration_minutes * self.timeout_per_minute)
         return max(self.base_timeout, dynamic_timeout)
 
-    def format_text(self, text: str, duration_seconds: float = 0.0) -> Optional[str]:
+    def format_text(self, text: str, duration_seconds: float = 0.0, is_text_mode: bool = False) -> Optional[str]:
         """
         Відправити текст на форматування через LM Studio API (streaming mode)
         
         Args:
-            text: Текст для форматування (LRC формат з таймкодами)
+            text: Текст для форматування (LRC формат з таймкодами або чистий текст)
             duration_seconds: Тривалість лекції в секундах (для динамічного timeout)
+            is_text_mode: Якщо True, текст без таймкодів
             
         Returns:
-            Сформатований текст у LRC форматі або None у разі помилки
+            Сформатований текст або None у разі помилки
         """
-        prompt = self._create_prompt(text)
+        prompt = self._create_prompt(text, is_text_mode)
         
         # DEBUG: Log first few lines of input text
         logger.debug(f"DEBUG: Input text length: {len(text)} chars")
@@ -428,9 +429,51 @@ class LMApiClient:
         
         return None
 
-    def _create_prompt(self, text: str) -> str:
-        """Створити промпт для форматування LRC тексту"""
-        prompt = f"""Ты — профессиональный редактор текстов, специализирующийся на транскриптах лекций по восточной философии и вайшнавской традиции.
+    def _create_prompt(self, text: str, is_text_mode: bool = False) -> str:
+        """Створити промпт для форматування тексту
+        
+        Args:
+            text: Текст для форматування
+            is_text_mode: Якщо True, текст без таймкодів (режим --text)
+        """
+        if is_text_mode:
+            # Промпт для текстового режиму (без таймкодів)
+            prompt = f"""Ты — профессиональный редактор текстов, специализирующийся на транскриптах лекций по восточной философии и вайшнавской традиции.
+
+ТВОЯ ЗАДАЧА:
+Исправить сырые ошибки распознавания речи (ASR) в предоставленном тексте, соблюдая следующие правила:
+
+ВАЖНО — ФОРМАТ ВЫХОДНЫХ ДАННЫХ:
+- Входной текст НЕ содержит таймкодов — это чистый текст транскрипции.
+- ТЫ ОБЯЗАН сохранить текст в ТЕКСТОВОМ формате БЕЗ таймкодов!
+- Не добавляй никаких временных меток, только исправленный текст.
+
+1. ВОССТАНОВЛЕНИЕ ТЕРМИНОВ: Самая приоритетная задача — исправить искаженные санскритские названия, имена и мантры.
+- Например: "Намов Вишнухадая" -> "Намо Вишну-падая", "Гоу" -> "Гокарна", "Вайкумхи" -> "Вайкунтхи".
+- Используй контекст повествования, чтобы узнать правильные названия.
+
+2. СТИЛИСТИКА (Verbatim-Lite): Сохраняй живой стиль оратора. Не удаляй повторы, если они подчеркивают эмоцию, и не превращай разговорную речь в официально-деловую.
+
+3. ПУНКТУАЦИЯ И СТРУКТУРА:
+- Разбей текст на логические абзацы (пустые строки между абзацами).
+- Используй длинное тире для пауз и прямой речи.
+- Обязательно выделяй мантры отдельными блоками.
+
+4. ЯЗЫК: Выходной текст должен быть на том же языке, что и оригинал (русский). НЕ ПЕРЕВОДИ текст, если он на русском — оставляй на русском.
+
+ПРИМЕР ФОРМАТА:
+Вход:
+привет друзья сегодня я расскажу о истории Индии и кришне
+
+Выход:
+Привет, друзья! Сегодня я расскажу о
+истории Индии и Кришне.
+
+ТЕКСТ ДЛЯ ОБРАБОТКИ:
+{text}""".strip()
+        else:
+            # Промпт для LRC режиму (з таймкодами)
+            prompt = f"""Ты — профессиональный редактор текстов, специализирующийся на транскриптах лекций по восточной философии и вайшнавской традиции.
 
 ТВОЯ ЗАДАЧА:
 Исправить сырые ошибки распознавания речи (ASR) в предоставленном тексте, соблюдая следующие правила:
@@ -643,18 +686,30 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all', media_id: 
             
             tracker.start_lecture()
             
-            # Відправити LRC текст на форматування
-            formatted_lrc = api_client.format_text(lrc_text, duration)
+            # При save_mode='text' використовуємо transcribe_txt (без таймкодів)
+            if save_mode == 'text':
+                input_text = media.get('transcribe_txt', '') or lrc_to_plain_text(lrc_text)
+                logger.info(f"[#{media_id}] Режим --text: використовую transcribe_txt ({len(input_text)} символів)")
+            else:
+                input_text = lrc_text
+            
+            # Відправити текст на форматування
+            formatted_text = api_client.format_text(input_text, duration, is_text_mode=(save_mode == 'text'))
             
             tracker.end_lecture()
             
-            if formatted_lrc is None or not formatted_lrc.strip():
+            if formatted_text is None or not formatted_text.strip():
                 raise Exception("Не вдалося отримати відповідь від API після кількох спроб")
             
-            # Extract plain text from formatted LRC
-            plain_text = lrc_to_plain_text(formatted_lrc)
+            # При save_mode='text' результат вже без таймкодів, інакше потрібно витягнути plain text
+            if save_mode == 'text':
+                plain_text = formatted_text
+                formatted_lrc = lrc_to_plain_text(formatted_text) if save_mode == 'all' else None
+            else:
+                plain_text = lrc_to_plain_text(formatted_text)
+                formatted_lrc = formatted_text
             
-            logger.info(f"[#{media_id}] Збереження: formatted_lrc={len(formatted_lrc)} символів, plain_text={len(plain_text)} символів")
+            logger.info(f"[#{media_id}] Збереження: formatted={len(formatted_text)} символів")
             
             # Save based on save_mode
             if save_mode == 'all':
@@ -664,7 +719,7 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all', media_id: 
                 db.save_draft_lrc(media_id, formatted_lrc)
                 logger.info(f"[#{media_id}] ✓ Збережено в draft_lrc")
             elif save_mode == 'text':
-                db.save_draft(media_id, plain_text)
+                db.save_draft(media_id, formatted_text)
                 logger.info(f"[#{media_id}] ✓ Збережено в draft")
             
             # Оновити статус на "finished_formatting"
