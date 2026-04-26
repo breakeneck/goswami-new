@@ -46,9 +46,9 @@ python manage.py collectstatic --noinput 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}=== Starting Django development server ===${NC}"
-echo -e "${GREEN}Site: http://localhost:8000${NC}"
-echo -e "${GREEN}Admin: http://localhost:8000/admin${NC}"
+echo -e "${GREEN}Site: http://localhost:8008${NC}"
+echo -e "${GREEN}Admin: http://localhost:8008/admin${NC}"
 echo ""
 
 # Run server
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver 0.0.0.0:8008
