@@ -89,6 +89,66 @@ def lrc_to_plain_text(lrc_text: str) -> str:
     return LRC_TIMESTAMP_PATTERN.sub('', lrc_text)
 
 
+def clean_transcript(text: str) -> str:
+    """Очищує транскрипцію - видаляє шум, повтори, форматує"""
+    if not text:
+        return text
+    
+    # 1. Видалити технічний мусор
+    text = re.sub(r"Субтитры создавал DimaTorzok", "", text, flags=re.IGNORECASE)
+    
+    def normalize_repeated_chars(word):
+        return re.sub(r"(.)\1{4,}", r"\1...", word)
+    
+    def is_noise_block(words):
+        if len(words) < 10:
+            return False
+        unique = set(words)
+        if len(unique) <= max(2, len(words) * 0.1):
+            return True
+        return False
+    
+    def collapse_repeated_words(words):
+        result = []
+        prev = None
+        count = 0
+        for w in words:
+            if w == prev:
+                count += 1
+            else:
+                count = 1
+                prev = w
+            if count <= 2:
+                result.append(w)
+        return result
+    
+    words = text.split()
+    cleaned = []
+    buffer = []
+    
+    for w in words:
+        w = normalize_repeated_chars(w)
+        if re.fullmatch(r"(.)\1{4,}", w):
+            continue
+        buffer.append(w)
+        if len(buffer) >= 30:
+            if not is_noise_block(buffer):
+                buffer = collapse_repeated_words(buffer)
+                cleaned.extend(buffer)
+            buffer = []
+    
+    if buffer:
+        if not is_noise_block(buffer):
+            buffer = collapse_repeated_words(buffer)
+            cleaned.extend(buffer)
+    
+    text = " ".join(cleaned)
+    text = re.sub(r"([.!?])\s+", r"\1\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def format_segments_as_lrc(segments: List[Tuple[float, str]]) -> str:
     """Format list of (timestamp, text) tuples back into LRC format."""
     lines = []
@@ -704,10 +764,13 @@ def process_formatting(language: str = 'RUS', save_mode: str = 'all', media_id: 
             
             # При save_mode='text' використовуємо transcribe_txt (без таймкодів)
             if save_mode == 'text':
-                input_text = media.get('transcribe_txt', '') or lrc_to_plain_text(lrc_text)
+                raw_text = media.get('transcribe_txt', '') or lrc_to_plain_text(lrc_text)
+                input_text = clean_transcript(raw_text)
                 logger.info(f"[#{media_id}] Режим --text: використовую transcribe_txt ({len(input_text)} символів)")
             else:
-                input_text = lrc_text
+                # Для LRC режиму - спочатку очищуємо, потім відправляємо
+                plain_lrc = lrc_to_plain_text(lrc_text)
+                input_text = clean_transcript(plain_lrc)
             
             # Відправити текст на форматування
             formatted_text = api_client.format_text(input_text, duration, is_text_mode=(save_mode == 'text'))
