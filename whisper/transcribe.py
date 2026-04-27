@@ -313,12 +313,14 @@ class Database:
                     """UPDATE media 
                        SET transcribe_txt = %s, 
                            transcribe_lrc = %s, 
-                           transcribe_srt = %s, 
+                           transcribe_srt = %s,
+                           raw_transcribe_txt = %s,
                            transcribe_status = %s 
                        WHERE id = %s""",
                     (transcription.get('txt'), 
                      transcription.get('lrc'), 
-                     transcription.get('srt'), 
+                     transcription.get('srt'),
+                     transcription.get('raw_txt'),
                      status, 
                      media_id)
                 )
@@ -593,6 +595,7 @@ def worker_process(
             # Apply cleaning to the transcription text
             if transcription.get('txt'):
                 logger.info(f"Worker {worker_id}: Cleaning transcription for {record_id}...")
+                transcription['raw_txt'] = transcription['txt']  # Зберігаємо raw до очищення
                 transcription['txt'] = clean_transcript(transcription['txt'])
             
             result_queue.put((record_id, transcription, None))

@@ -59,13 +59,19 @@
     </div>
     {% endif %}
     
-    {% if lecture.draft or lecture.transcribe_txt %}
+    {% if lecture.draft or lecture.raw_transcribe_txt or lecture.transcribe_txt %}
     <div class="transcribe-section">
         <div class="transcribe-toggles">
             {% if lecture.draft %}
             <button class="transcribe-toggle active" data-target="transcribe-draft">
                 <span class="toggle-indicator"></span>
                 <span class="toggle-label">Чернетка</span>
+            </button>
+            {% endif %}
+            {% if lecture.raw_transcribe_txt %}
+            <button class="transcribe-toggle" data-target="transcribe-raw">
+                <span class="toggle-indicator"></span>
+                <span class="toggle-label">Сира</span>
             </button>
             {% endif %}
             {% if lecture.transcribe_txt %}
@@ -80,6 +86,12 @@
         <div class="transcribe-draft" id="transcribe-draft">
             <h4>Чернетка</h4>
             <div class="transcribe-text">{{ lecture.draft|linebreaks }}</div>
+        </div>
+        {% endif %}
+        {% if lecture.raw_transcribe_txt %}
+        <div class="transcribe-raw" id="transcribe-raw" style="display: none;">
+            <h4>Сира транскрипція</h4>
+            <div class="transcribe-text">{{ lecture.raw_transcribe_txt|linebreaks }}</div>
         </div>
         {% endif %}
         {% if lecture.transcribe_txt %}
