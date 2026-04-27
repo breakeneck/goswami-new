@@ -134,16 +134,72 @@ class Media(models.Model):
     def __str__(self):
         return self.title
 
+    def _clean_transcript(self, text: str) -> str:
+        """Очищує транскрипцію - видаляє шум, повтори, форматує"""
+        if not text:
+            return text
+        import re
+        
+        # 1. Видалити технічний мусор
+        text = re.sub(r"Субтитры создавал DimaTorzok", "", text, flags=re.IGNORECASE)
+        
+        def normalize_repeated_chars(word):
+            return re.sub(r"(.)\1{4,}", r"\1...", word)
+        
+        def is_noise_block(words):
+            if len(words) < 10:
+                return False
+            unique = set(words)
+            if len(unique) <= max(2, len(words) * 0.1):
+                return True
+            return False
+        
+        def collapse_repeated_words(words):
+            result = []
+            prev = None
+            count = 0
+            for w in words:
+                if w == prev:
+                    count += 1
+                else:
+                    count = 1
+                    prev = w
+                if count <= 2:
+                    result.append(w)
+            return result
+        
+        words = text.split()
+        cleaned = []
+        buffer = []
+        
+        for w in words:
+            w = normalize_repeated_chars(w)
+            if re.fullmatch(r"(.)\1{4,}", w):
+                continue
+            buffer.append(w)
+            if len(buffer) >= 30:
+                if not is_noise_block(buffer):
+                    buffer = collapse_repeated_words(buffer)
+                    cleaned.extend(buffer)
+                buffer = []
+        
+        if buffer:
+            if not is_noise_block(buffer):
+                buffer = collapse_repeated_words(buffer)
+                cleaned.extend(buffer)
+        
+        text = " ".join(cleaned)
+        text = re.sub(r"([.!?])\s+", r"\1\n", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+    
     @property
     def cleaned_transcribe(self):
         """Повертає очищену транскрипцію (transcribe_txt оброблений clean_transcript)"""
         if not self.transcribe_txt:
             return None
-        # Import here to avoid circular imports
-        import sys
-        sys.path.insert(0, '/home/yuga/dev/python/goswami-new/whisper')
-        from transcribe import clean_transcript
-        return clean_transcript(self.transcribe_txt)
+        return self._clean_transcript(self.transcribe_txt)
     
     @property
     def duration_formatted(self):
