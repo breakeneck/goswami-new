@@ -1557,3 +1557,108 @@ img {
     font-style: italic;
     color: rgba(43, 43, 43, 0.8);
 }
+
+/* ============================================
+   Transcript Section & Toggles
+   ============================================ */
+
+.transcribe-section {
+    margin-top: 40px;
+    padding-top: 30px;
+    border-top: 1px solid #e4e4e4;
+}
+
+.transcribe-toggles {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.transcribe-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: 1px solid #e4e4e4;
+    border-radius: 25px;
+    background: #fff;
+    color: #2b2b2b;
+    font-family: 'AlergiaNormal', 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.transcribe-toggle:hover {
+    border-color: #23ada8;
+    color: #23ada8;
+}
+
+.transcribe-toggle.active {
+    background: #ffa000;
+    border-color: #ffa000;
+    color: #fff;
+}
+
+.transcribe-toggle .toggle-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    transition: background 0.2s;
+}
+
+.transcribe-toggle.active .toggle-indicator {
+    background: #fff;
+}
+
+.transcribe-toggle .toggle-label {
+    white-space: nowrap;
+}
+
+.transcribe-draft,
+.transcribe-final {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.transcribe-draft h4,
+.transcribe-final h4 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #2b2b2b;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e4e4e4;
+}
+
+.transcribe-text {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #4c5451;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+@media only screen and (max-width: 680px) {
+    .transcribe-toggles {
+        flex-wrap: wrap;
+    }
+    
+    .transcribe-toggle {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+    
+    .transcribe-draft,
+    .transcribe-final {
+        padding: 15px;
+    }
+    
+    .transcribe-text {
+        font-size: 15px;
+    }
+}

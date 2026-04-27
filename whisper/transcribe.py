@@ -15,6 +15,7 @@ import os
 import sys
 import argparse
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -39,6 +40,102 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Transcript Cleaning Functions
+# ============================================================================
+
+def normalize_repeated_chars(word: str) -> str:
+    """Replace repeated characters (5+) with single char + '...'"""
+    return re.sub(r"(.)\1{4,}", r"\1...", word)
+
+
+def collapse_repeated_words(words: list) -> list:
+    """Collapse consecutive repeated words, keeping max 2 occurrences"""
+    result = []
+    prev = None
+    count = 0
+
+    for w in words:
+        if w == prev:
+            count += 1
+        else:
+            count = 1
+            prev = w
+
+        if count <= 2:
+            result.append(w)
+
+    return result
+
+
+def is_noise_block(words: list) -> bool:
+    """Check if a block of words is likely noise (too few unique words)"""
+    if len(words) < 10:
+        return False
+
+    unique = set(words)
+
+    # If very few unique words → this is noise
+    if len(unique) <= max(2, len(words) * 0.1):
+        return True
+
+    return False
+
+
+def clean_transcript(text: str) -> str:
+    """
+    Clean transcript text by removing:
+    - Technical garbage (e.g., subtitle creator credits)
+    - Repeated characters (аааааа → а...)
+    - Noise blocks (blocks with very few unique words)
+    - Consecutive repeated words (more than 2)
+    
+    Also formats output with proper sentence structure.
+    """
+    if not text:
+        return text
+    
+    # 1. Remove technical garbage
+    text = re.sub(r"Субтитры создавал DimaTorzok", "", text, flags=re.IGNORECASE)
+
+    words = text.split()
+
+    cleaned = []
+    buffer = []
+
+    for w in words:
+        w = normalize_repeated_chars(w)
+
+        # Skip words that are just repeated characters like "аааааа"
+        if re.fullmatch(r"(.)\1{4,}", w):
+            continue
+
+        buffer.append(w)
+
+        if len(buffer) >= 30:
+            if not is_noise_block(buffer):
+                buffer = collapse_repeated_words(buffer)
+                cleaned.extend(buffer)
+            buffer = []
+
+    # Process remaining buffer
+    if buffer:
+        if not is_noise_block(buffer):
+            buffer = collapse_repeated_words(buffer)
+            cleaned.extend(buffer)
+
+    text = " ".join(cleaned)
+
+    # Add structure: sentence endings
+    text = re.sub(r"([.!?])\s+", r"\1\n", text)
+
+    # Clean up whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 
 
 # ============================================================================
@@ -492,6 +589,12 @@ def worker_process(
         try:
             logger.info(f"Worker {worker_id}: Transcribing {record_id} - {title[:40]}...")
             transcription = engine.transcribe(audio_path, language=language)
+            
+            # Apply cleaning to the transcription text
+            if transcription.get('txt'):
+                logger.info(f"Worker {worker_id}: Cleaning transcription for {record_id}...")
+                transcription['txt'] = clean_transcript(transcription['txt'])
+            
             result_queue.put((record_id, transcription, None))
             logger.info(f"Worker {worker_id}: Finished {record_id}")
         except Exception as e:

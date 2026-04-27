@@ -273,4 +273,29 @@ document.addEventListener('DOMContentLoaded', function() {
         formatDuration,
         debounce
     };
+    
+    // ============================================
+    // Transcript Toggles
+    // ============================================
+    
+    const transcribeToggles = document.querySelectorAll('.transcribe-toggle');
+    
+    transcribeToggles.forEach(toggle => {
+        toggle.addEventListener('click', function() {
+            const targetId = this.dataset.target;
+            const targetElement = document.getElementById(targetId);
+            
+            if (!targetElement) return;
+            
+            // Update toggle button states
+            transcribeToggles.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Show/hide corresponding content
+            document.querySelectorAll('.transcribe-draft, .transcribe-final').forEach(el => {
+                el.style.display = 'none';
+            });
+            targetElement.style.display = 'block';
+        });
+    });
 });
