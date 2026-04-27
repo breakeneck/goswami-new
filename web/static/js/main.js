@@ -292,7 +292,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('active');
             
             // Show/hide corresponding content
-            document.querySelectorAll('.transcribe-draft, .transcribe-final').forEach(el => {
+            document.querySelectorAll('.transcribe-raw, .transcribe-draft, .transcribe-cleaned').forEach(el => {
                 el.style.display = 'none';
             });
             targetElement.style.display = 'block';
