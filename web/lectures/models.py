@@ -99,7 +99,6 @@ class Media(models.Model):
     # Поля для транскрипції Whisper
     draft = models.TextField(blank=True, null=True, verbose_name='Чернетка транскрипції')
     transcribe_txt = models.TextField(blank=True, null=True, verbose_name='Транскрипція (текст)')
-    raw_transcribe_txt = models.TextField(blank=True, null=True, verbose_name='Сира транскрипція')
     transcribe_lrc = models.TextField(blank=True, null=True, verbose_name='Транскрипція (LRC)')
     transcribe_srt = models.TextField(blank=True, null=True, verbose_name='Транскрипція (SRT)')
     TRANSCRIBE_STATUS_CHOICES = [
@@ -135,6 +134,17 @@ class Media(models.Model):
     def __str__(self):
         return self.title
 
+    @property
+    def cleaned_transcribe(self):
+        """Повертає очищену транскрипцію (transcribe_txt оброблений clean_transcript)"""
+        if not self.transcribe_txt:
+            return None
+        # Import here to avoid circular imports
+        import sys
+        sys.path.insert(0, '/home/yuga/dev/python/goswami-new/whisper')
+        from transcribe import clean_transcript
+        return clean_transcript(self.transcribe_txt)
+    
     @property
     def duration_formatted(self):
         """Форматована тривалість у вигляді H:MM:SS"""
